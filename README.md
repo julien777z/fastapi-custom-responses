@@ -6,7 +6,7 @@ Provides normalized response objects and error handling
 
 ```py
 from http import HTTPStatus
-from fastapi_custom_responses import ERROR_HANDLERS, Response
+from fastapi_custom_responses import EXCEPTION_HANDLERS, Response
 from fastapi import APIRouter
 
 # Initialize FastAPI
@@ -17,7 +17,7 @@ app = FastAPI(
     description="My API",
     version="1.0.0",
     lifespan=lifespan,
-    exception_handlers=ERROR_HANDLERS, # Use error handler from library
+    exception_handlers=EXCEPTION_HANDLERS, # Use error handler from library
 )
 
 # Define data model
