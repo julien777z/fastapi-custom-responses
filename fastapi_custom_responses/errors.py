@@ -91,7 +91,7 @@ def _general_exception_handler(_: Request, exc: Exception) -> JSONResponse:
     )
 
 
-ERROR_HANDLERS: dict[type[Exception], Callable[[Request, Exception], JSONResponse]] = {
+EXCEPTION_HANDLERS: dict[type[Exception], Callable[[Request, Exception], JSONResponse]] = {
     RequestValidationError: _validation_exception_handler,
     ErrorResponse: _error_response_handler,
     Exception: _general_exception_handler,
