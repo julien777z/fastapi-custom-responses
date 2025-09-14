@@ -1,2 +1,2 @@
-from .errors import ERROR_HANDLERS, ErrorResponse
+from .errors import EXCEPTION_HANDLERS, ErrorResponse
 from .responses import PaginatedResponse, PaginationMeta, Response
