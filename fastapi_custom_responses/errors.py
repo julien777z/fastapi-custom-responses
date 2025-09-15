@@ -65,6 +65,19 @@ def _validation_exception_handler(_: Request, exc: RequestValidationError) -> JS
     )
 
 
+def _value_error_handler(_: Request, exc: ValueError) -> JSONResponse:
+    """Handle value errors, e.g., Pydantic validation errors."""
+
+    logger.exception(exc)
+
+    response = Response(success=False, error=exc.args[0])
+
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content=response.model_dump(mode="json"),
+    )
+
+
 def _error_response_handler(_: Request, exc: ErrorResponse) -> JSONResponse:
     """Convert ErrorResponse exceptions to proper JSONResponse objects."""
 
@@ -92,7 +105,8 @@ def _general_exception_handler(_: Request, exc: Exception) -> JSONResponse:
 
 
 EXCEPTION_HANDLERS: dict[type[Exception], Callable[[Request, Exception], JSONResponse]] = {
-    RequestValidationError: _validation_exception_handler,
+    RequestValidationError: _value_error_handler,
+    ValueError: _value_error_handler,
     ErrorResponse: _error_response_handler,
     Exception: _general_exception_handler,
 }
