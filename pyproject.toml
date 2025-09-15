@@ -1,6 +1,6 @@
 [project]
 name = "fastapi-custom-responses"
-version = "0.0.6"
+version = "0.0.7"
 description = "FastAPI Custom Responses"
 authors = [
     { name = "Julien Kmec", email = "me@julien.dev" },
