@@ -70,7 +70,7 @@ def _value_error_handler(_: Request, exc: ValueError) -> JSONResponse:
 
     logger.exception(exc)
 
-    response = Response(success=False, error=exc.args[0])
+    response = Response(success=False, error=str(exc))
 
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
