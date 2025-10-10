@@ -1540,4 +1540,4 @@ dev = ["black", "isort", "pylint"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.15"
-content-hash = "cad71d722440f1a980d67f7a860f98c4cd8d6150e7e780ef18055c6001264cfd"
+content-hash = "9a938fda61b87327dc29890ac8831cf2de7224730ab96dfc6f3a35d73645e50f"
