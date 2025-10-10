@@ -9,11 +9,11 @@ readme = "README.md"
 license = {file = "LICENSE"}
 homepage = "https://github.com/julien777z/fastapi-custom-responses"
 packages = [{include = "fastapi_custom_responses"}]
-requires-python = ">=3.11.0,<3.14"
+requires-python = ">=3.11,<3.15"
 dependencies = [
     "pydantic>=2.10.6",
     "fastapi[standard]>=0.115.14",
-    "pydantic-super-model (>=1.0.3,<2.0.0)",
+    "pydantic-super-model (>=1.1.2,<2.0.0)",
 ]
 
 [tool.black]
