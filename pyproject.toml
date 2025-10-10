@@ -13,7 +13,7 @@ requires-python = ">=3.11,<3.15"
 dependencies = [
     "pydantic>=2.10.6",
     "fastapi[standard]>=0.115.14",
-    "pydantic-super-model (>=1.1.2,<2.0.0)",
+    "pydantic-super-model>=1.1.2",
 ]
 
 [tool.black]
