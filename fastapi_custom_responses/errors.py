@@ -5,6 +5,7 @@ from typing import Callable
 from fastapi import Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 from fastapi_custom_responses.responses import Response
 
@@ -17,6 +18,13 @@ ERROR_MESSAGES: dict[int, str] = {
     HTTPStatus.BAD_REQUEST: "Invalid request",
     HTTPStatus.INTERNAL_SERVER_ERROR: "An unexpected error occurred",
 }
+
+
+class ErrorResponseModel(BaseModel):
+    """Pydantic model for error response schema. Use this in FastAPI's `responses` parameter to document the error response schema."""
+
+    success: bool
+    error: str
 
 
 class ErrorResponse(Exception):
