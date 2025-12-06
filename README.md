@@ -1,12 +1,12 @@
 # FastAPI Custom Responses
 
-Provides normalized response objects and error handling
+Provides normalized response objects and error handling.
 
 ## Example
 
 ```py
 from http import HTTPStatus
-from fastapi_custom_responses import EXCEPTION_HANDLERS, ErrorResponse, ErrorResponseModel, Response
+from fastapi_custom_responses import EXCEPTION_HANDLERS, ErrorResponse, ErrorResponseModel, Response, SuccessResponse
 from fastapi import APIRouter, FastAPI, Request
 
 # Initialize FastAPI
@@ -63,3 +63,5 @@ async def error_route(_: Request) -> Response:
 
     raise ErrorResponse(error="Your request is invalid.", status_code=HTTPStatus.BAD_REQUEST)
 ```
+
+**Note:** When using OpenAPI generators, use `SuccessResponse` instead of `Response` if your endpoint has no data to return.
