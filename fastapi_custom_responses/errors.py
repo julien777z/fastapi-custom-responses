@@ -2,7 +2,7 @@ import logging
 from http import HTTPStatus
 from typing import Callable
 
-from fastapi import Request, status
+from fastapi import HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -112,7 +112,20 @@ def _general_exception_handler(_: Request, exc: Exception) -> JSONResponse:
     )
 
 
+def _http_exception_handler(_: Request, exc: HTTPException) -> JSONResponse:
+    """Convert HTTPException to our standard error format."""
+
+    error_message = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+    response = Response(success=False, error=error_message)
+
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=response.model_dump(mode="json"),
+    )
+
+
 EXCEPTION_HANDLERS: dict[type[Exception], Callable[[Request, Exception], JSONResponse]] = {
+    HTTPException: _http_exception_handler,
     RequestValidationError: _value_error_handler,
     ValueError: _value_error_handler,
     ErrorResponse: _error_response_handler,
