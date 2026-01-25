@@ -1,0 +1,27 @@
+name: Run Tests
+
+on:
+  push:
+    branches:
+      - "**"
+    paths:
+      - "fastapi_custom_responses/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - ".github/workflows/run-tests.yml"
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python and Poetry
+        uses: ./.github/actions/setup-python-poetry
+        with:
+          post_setup_command: "poetry install -E dev"
+
+      - name: Run Tests
+        run: poetry run pytest tests/ -v

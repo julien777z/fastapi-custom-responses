@@ -60,12 +60,106 @@ class ErrorResponse(Exception):
         )
 
 
+def _format_field_location(loc: tuple) -> str:
+    """Extract the field name from a validation error location tuple.
+
+    Args:
+        loc: Location tuple from Pydantic error (e.g., ('body', 'email') or ('query', 'page'))
+
+    Returns:
+        Human-readable field name (e.g., 'email' or 'page')
+    """
+
+    # Filter out 'body', 'query', 'path' prefixes and join remaining parts
+    field_parts = [str(part) for part in loc if part not in ("body", "query", "path", "header")]
+
+    if not field_parts:
+        # If all parts were filtered out, use the last part of the original location
+        return str(loc[-1]) if loc else "field"
+
+    return ".".join(field_parts)
+
+
+def _format_single_error(error: dict) -> str:
+    """Format a single Pydantic validation error into a human-readable message.
+
+    Args:
+        error: A single error dict from RequestValidationError.errors()
+
+    Returns:
+        Human-readable error message
+    """
+
+    field = _format_field_location(error.get("loc", ()))
+    error_type = error.get("type", "")
+    msg = error.get("msg", "")
+
+    # Map common Pydantic error types to human-readable messages
+    match error_type:
+        case "missing":
+            return f"Field '{field}' is required"
+        case "string_type" | "str_type":
+            return f"Field '{field}' must be a string"
+        case "int_type" | "int_parsing":
+            return f"Field '{field}' must be a valid integer"
+        case "float_type" | "float_parsing":
+            return f"Field '{field}' must be a valid number"
+        case "bool_type" | "bool_parsing":
+            return f"Field '{field}' must be a boolean"
+        case "enum":
+            return f"Field '{field}' has an invalid value"
+        case "uuid_type" | "uuid_parsing":
+            return f"Field '{field}' must be a valid UUID"
+        case "string_too_short":
+            return f"Field '{field}' is too short"
+        case "string_too_long":
+            return f"Field '{field}' is too long"
+        case "greater_than" | "greater_than_equal" | "less_than" | "less_than_equal":
+            return f"Field '{field}' has an invalid value: {msg}"
+        case "value_error":
+            # Use the message directly for value errors as they're typically already human-readable
+            return f"Field '{field}': {msg}"
+        case "json_invalid":
+            return "Invalid JSON in request body"
+        case _:
+            # For any other error type, use the Pydantic message with the field name
+            if msg:
+                return f"Field '{field}': {msg}"
+
+            return f"Field '{field}' is invalid"
+
+
+def _format_validation_errors(exc: RequestValidationError) -> str:
+    """Format all validation errors from a RequestValidationError into a human-readable message.
+
+    Args:
+        exc: The RequestValidationError exception
+
+    Returns:
+        Human-readable error message combining all validation errors
+    """
+
+    errors = exc.errors()
+
+    if not errors:
+        return ERROR_MESSAGES[HTTPStatus.BAD_REQUEST]
+
+    if len(errors) == 1:
+        return _format_single_error(errors[0])
+
+    # Multiple errors: combine them with periods
+    formatted_errors = [_format_single_error(error) for error in errors]
+
+    return ". ".join(formatted_errors)
+
+
 def _validation_exception_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
-    """Handle validation errors from pydantic models."""
+    """Handle validation errors from pydantic models with human-readable messages."""
 
-    logger.exception(exc)
+    logger.warning("Validation error: %s", exc.errors())
 
-    response = Response(success=False, error=ERROR_MESSAGES[HTTPStatus.BAD_REQUEST])
+    error_message = _format_validation_errors(exc)
+    response = Response(success=False, error=error_message)
 
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
@@ -126,7 +220,7 @@ def _http_exception_handler(_: Request, exc: HTTPException) -> JSONResponse:
 
 EXCEPTION_HANDLERS: dict[type[Exception], Callable[[Request, Exception], JSONResponse]] = {
     HTTPException: _http_exception_handler,
-    RequestValidationError: _value_error_handler,
+    RequestValidationError: _validation_exception_handler,
     ValueError: _value_error_handler,
     ErrorResponse: _error_response_handler,
     Exception: _general_exception_handler,
