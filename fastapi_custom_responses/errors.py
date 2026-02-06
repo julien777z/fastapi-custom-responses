@@ -1,8 +1,9 @@
 import logging
+from collections.abc import Callable
 from http import HTTPStatus
-from typing import Callable
+from typing import Final, Self
 
-from fastapi import HTTPException, Request, status
+from fastapi import HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -11,7 +12,7 @@ from fastapi_custom_responses.responses import Response
 
 logger = logging.getLogger(__name__)
 
-ERROR_MESSAGES: dict[int, str] = {
+ERROR_MESSAGES: Final[dict[int, str]] = {
     HTTPStatus.UNAUTHORIZED: "Authentication required",
     HTTPStatus.FORBIDDEN: "You don't have permission to perform this action",
     HTTPStatus.NOT_FOUND: "Resource not found",
@@ -31,12 +32,7 @@ class ErrorResponse(Exception):
     """Standard error response that includes error message."""
 
     def __init__(self, error: str, status_code: int = HTTPStatus.BAD_REQUEST) -> None:
-        """Initialize error response with message and status code.
-
-        Args:
-            error: Error message to return
-            status_code: HTTP status code for the response
-        """
+        """Initialize error response with message and status code."""
 
         self.error = error
         self.status_code = status_code
@@ -44,15 +40,8 @@ class ErrorResponse(Exception):
         super().__init__(error)
 
     @classmethod
-    def from_status_code(cls, status_code: int) -> "ErrorResponse":
-        """Create an error response from a status code.
-
-        Args:
-            status_code: HTTP status code to get error message for
-
-        Returns:
-            ErrorResponse with the appropriate error message for the status code
-        """
+    def from_status_code(cls, status_code: int) -> Self:
+        """Create an error response from a status code."""
 
         return cls(
             error=ERROR_MESSAGES.get(status_code, ERROR_MESSAGES[HTTPStatus.INTERNAL_SERVER_ERROR]),
@@ -60,15 +49,136 @@ class ErrorResponse(Exception):
         )
 
 
+def _format_field_location(loc: tuple) -> str:
+    """Extract the field name from a validation error location tuple."""
+
+    # Filter out 'body', 'query', 'path' prefixes and join remaining parts
+    field_parts = [str(part) for part in loc if part not in ("body", "query", "path", "header")]
+
+    if not field_parts:
+        # If all parts were filtered out, use the last part of the original location
+        return str(loc[-1]) if loc else "field"
+
+    return ".".join(field_parts)
+
+
+def _format_number(value: int | float) -> str:
+    """Format a numeric constraint value for display, stripping unnecessary '.0' from whole floats."""
+
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+
+    return str(value)
+
+
+def _format_single_error(error: dict) -> str:
+    """Format a single Pydantic validation error into a human-readable message."""
+
+    field = _format_field_location(error.get("loc", ()))
+    error_type = error.get("type", "")
+    msg = error.get("msg", "")
+    ctx = error.get("ctx", {})
+
+    # Map common Pydantic error types to human-readable messages
+    match error_type:
+        case "missing":
+            return f"Field '{field}' is required"
+        case "string_type" | "str_type":
+            return f"Field '{field}' must be a string"
+        case "int_type" | "int_parsing":
+            return f"Field '{field}' must be a valid integer"
+        case "float_type" | "float_parsing":
+            return f"Field '{field}' must be a valid number"
+        case "bool_type" | "bool_parsing":
+            return f"Field '{field}' must be a boolean"
+        case "enum":
+            expected = ctx.get("expected", "")
+            if expected:
+                return f"Field '{field}' must be one of: {expected}"
+            return f"Field '{field}' has an invalid value"
+        case "uuid_type" | "uuid_parsing":
+            return f"Field '{field}' must be a valid UUID"
+        case "string_too_short":
+            min_len = ctx.get("min_length")
+            if min_len is not None:
+                return f"Field '{field}' must be at least {min_len} characters"
+            return f"Field '{field}' is too short"
+        case "string_too_long":
+            max_len = ctx.get("max_length")
+            if max_len is not None:
+                return f"Field '{field}' must be at most {max_len} characters"
+            return f"Field '{field}' is too long"
+        case "too_short":
+            min_len = ctx.get("min_length")
+            if min_len is not None:
+                return f"Field '{field}' must have at least {min_len} {'item' if min_len == 1 else 'items'}"
+            return f"Field '{field}' has too few items"
+        case "too_long":
+            max_len = ctx.get("max_length")
+            if max_len is not None:
+                return f"Field '{field}' must have at most {max_len} {'item' if max_len == 1 else 'items'}"
+            return f"Field '{field}' has too many items"
+        case "greater_than":
+            gt = ctx.get("gt")
+            if gt is not None:
+                return f"Field '{field}' must be greater than {_format_number(gt)}"
+            return f"Field '{field}' has an invalid value"
+        case "greater_than_equal":
+            ge = ctx.get("ge")
+            if ge is not None:
+                return f"Field '{field}' must be at least {_format_number(ge)}"
+            return f"Field '{field}' has an invalid value"
+        case "less_than":
+            lt = ctx.get("lt")
+            if lt is not None:
+                return f"Field '{field}' must be less than {_format_number(lt)}"
+            return f"Field '{field}' has an invalid value"
+        case "less_than_equal":
+            le = ctx.get("le")
+            if le is not None:
+                return f"Field '{field}' must be at most {_format_number(le)}"
+            return f"Field '{field}' has an invalid value"
+        case "value_error":
+            # Pydantic prefixes with "Value error, " -- strip it
+            clean_msg = msg.removeprefix("Value error, ")
+            return f"Field '{field}': {clean_msg}"
+        case "json_invalid":
+            return "Invalid JSON in request body"
+        case _:
+            # For any other error type, use the Pydantic message with the field name
+            if msg:
+                return f"Field '{field}': {msg}"
+
+            return f"Field '{field}' is invalid"
+
+
+def _format_validation_errors(exc: RequestValidationError) -> str:
+    """Format all validation errors into a single human-readable message."""
+
+    errors = exc.errors()
+
+    if not errors:
+        return ERROR_MESSAGES[HTTPStatus.BAD_REQUEST]
+
+    if len(errors) == 1:
+        return _format_single_error(errors[0])
+
+    # Multiple errors: combine them with periods
+    formatted_errors = [_format_single_error(error) for error in errors]
+
+    return ". ".join(formatted_errors)
+
+
 def _validation_exception_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
-    """Handle validation errors from pydantic models."""
+    """Handle validation errors from pydantic models with human-readable messages."""
 
-    logger.exception(exc)
+    logger.warning("Validation error: %s", exc.errors())
 
-    response = Response(success=False, error=ERROR_MESSAGES[HTTPStatus.BAD_REQUEST])
+    error_message = _format_validation_errors(exc)
+    response = Response(success=False, error=error_message)
 
     return JSONResponse(
-        status_code=status.HTTP_400_BAD_REQUEST,
+        status_code=HTTPStatus.BAD_REQUEST,
         content=response.model_dump(mode="json"),
     )
 
@@ -81,7 +191,7 @@ def _value_error_handler(_: Request, exc: ValueError) -> JSONResponse:
     response = Response(success=False, error=str(exc))
 
     return JSONResponse(
-        status_code=status.HTTP_400_BAD_REQUEST,
+        status_code=HTTPStatus.BAD_REQUEST,
         content=response.model_dump(mode="json"),
     )
 
@@ -107,7 +217,7 @@ def _general_exception_handler(_: Request, exc: Exception) -> JSONResponse:
     response = Response(success=False, error=ERROR_MESSAGES[HTTPStatus.INTERNAL_SERVER_ERROR])
 
     return JSONResponse(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
         content=response.model_dump(mode="json"),
     )
 
@@ -126,7 +236,7 @@ def _http_exception_handler(_: Request, exc: HTTPException) -> JSONResponse:
 
 EXCEPTION_HANDLERS: dict[type[Exception], Callable[[Request, Exception], JSONResponse]] = {
     HTTPException: _http_exception_handler,
-    RequestValidationError: _value_error_handler,
+    RequestValidationError: _validation_exception_handler,
     ValueError: _value_error_handler,
     ErrorResponse: _error_response_handler,
     Exception: _general_exception_handler,
