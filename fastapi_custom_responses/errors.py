@@ -1,8 +1,9 @@
 import logging
+from collections.abc import Callable
 from http import HTTPStatus
-from typing import Callable
+from typing import Final, Self
 
-from fastapi import HTTPException, Request, status
+from fastapi import HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -11,7 +12,7 @@ from fastapi_custom_responses.responses import Response
 
 logger = logging.getLogger(__name__)
 
-ERROR_MESSAGES: dict[int, str] = {
+ERROR_MESSAGES: Final[dict[int, str]] = {
     HTTPStatus.UNAUTHORIZED: "Authentication required",
     HTTPStatus.FORBIDDEN: "You don't have permission to perform this action",
     HTTPStatus.NOT_FOUND: "Resource not found",
@@ -31,12 +32,7 @@ class ErrorResponse(Exception):
     """Standard error response that includes error message."""
 
     def __init__(self, error: str, status_code: int = HTTPStatus.BAD_REQUEST) -> None:
-        """Initialize error response with message and status code.
-
-        Args:
-            error: Error message to return
-            status_code: HTTP status code for the response
-        """
+        """Initialize error response with message and status code."""
 
         self.error = error
         self.status_code = status_code
@@ -44,15 +40,8 @@ class ErrorResponse(Exception):
         super().__init__(error)
 
     @classmethod
-    def from_status_code(cls, status_code: int) -> "ErrorResponse":
-        """Create an error response from a status code.
-
-        Args:
-            status_code: HTTP status code to get error message for
-
-        Returns:
-            ErrorResponse with the appropriate error message for the status code
-        """
+    def from_status_code(cls, status_code: int) -> Self:
+        """Create an error response from a status code."""
 
         return cls(
             error=ERROR_MESSAGES.get(status_code, ERROR_MESSAGES[HTTPStatus.INTERNAL_SERVER_ERROR]),
@@ -61,14 +50,7 @@ class ErrorResponse(Exception):
 
 
 def _format_field_location(loc: tuple) -> str:
-    """Extract the field name from a validation error location tuple.
-
-    Args:
-        loc: Location tuple from Pydantic error (e.g., ('body', 'email') or ('query', 'page'))
-
-    Returns:
-        Human-readable field name (e.g., 'email' or 'page')
-    """
+    """Extract the field name from a validation error location tuple."""
 
     # Filter out 'body', 'query', 'path' prefixes and join remaining parts
     field_parts = [str(part) for part in loc if part not in ("body", "query", "path", "header")]
@@ -90,14 +72,7 @@ def _format_number(value: int | float) -> str:
 
 
 def _format_single_error(error: dict) -> str:
-    """Format a single Pydantic validation error into a human-readable message.
-
-    Args:
-        error: A single error dict from RequestValidationError.errors()
-
-    Returns:
-        Human-readable error message
-    """
+    """Format a single Pydantic validation error into a human-readable message."""
 
     field = _format_field_location(error.get("loc", ()))
     error_type = error.get("type", "")
@@ -178,14 +153,7 @@ def _format_single_error(error: dict) -> str:
 
 
 def _format_validation_errors(exc: RequestValidationError) -> str:
-    """Format all validation errors from a RequestValidationError into a human-readable message.
-
-    Args:
-        exc: The RequestValidationError exception
-
-    Returns:
-        Human-readable error message combining all validation errors
-    """
+    """Format all validation errors into a single human-readable message."""
 
     errors = exc.errors()
 
@@ -210,7 +178,7 @@ def _validation_exception_handler(_: Request, exc: RequestValidationError) -> JS
     response = Response(success=False, error=error_message)
 
     return JSONResponse(
-        status_code=status.HTTP_400_BAD_REQUEST,
+        status_code=HTTPStatus.BAD_REQUEST,
         content=response.model_dump(mode="json"),
     )
 
@@ -223,7 +191,7 @@ def _value_error_handler(_: Request, exc: ValueError) -> JSONResponse:
     response = Response(success=False, error=str(exc))
 
     return JSONResponse(
-        status_code=status.HTTP_400_BAD_REQUEST,
+        status_code=HTTPStatus.BAD_REQUEST,
         content=response.model_dump(mode="json"),
     )
 
@@ -249,7 +217,7 @@ def _general_exception_handler(_: Request, exc: Exception) -> JSONResponse:
     response = Response(success=False, error=ERROR_MESSAGES[HTTPStatus.INTERNAL_SERVER_ERROR])
 
     return JSONResponse(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
         content=response.model_dump(mode="json"),
     )
 

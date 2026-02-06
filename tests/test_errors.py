@@ -5,6 +5,14 @@ import pytest
 
 from fastapi_custom_responses.errors import _format_field_location, _format_single_error
 
+_VALID_CONSTRAINED_PAYLOAD: dict = {
+    "username": "alice",
+    "score": 50,
+    "rating": 2.5,
+    "color": "red",
+    "tags": ["a"],
+}
+
 
 class TestValidationErrors:
     """Tests for Pydantic validation error handling."""
@@ -46,7 +54,6 @@ class TestValidationErrors:
         assert response.status_code == HTTPStatus.BAD_REQUEST
         data = response.json()
         assert data["success"] is False
-        # Should mention multiple fields
         assert "age" in data["error"] or "email" in data["error"]
 
     @pytest.mark.asyncio
@@ -80,128 +87,52 @@ class TestConstrainedValidationErrors:
     client: AsyncClient
 
     @pytest.mark.asyncio
-    async def test_string_too_short_includes_min_length(self) -> None:
-        """Test that string_too_short error includes the minimum length."""
+    @pytest.mark.parametrize(
+        ("payload_override", "expected_error"),
+        [
+            ({"username": "ab"}, "Field 'username' must be at least 3 characters"),
+            ({"username": "a" * 21}, "Field 'username' must be at most 20 characters"),
+            ({"score": -1}, "Field 'score' must be at least 0"),
+            ({"score": 101}, "Field 'score' must be at most 100"),
+            ({"rating": 0}, "Field 'rating' must be greater than 0"),
+            ({"rating": 5}, "Field 'rating' must be less than 5"),
+            ({"tags": []}, "Field 'tags' must have at least 1 item"),
+            ({"tags": ["a", "b", "c", "d", "e", "f"]}, "Field 'tags' must have at most 5 items"),
+        ],
+        ids=[
+            "string_too_short",
+            "string_too_long",
+            "greater_than_equal",
+            "less_than_equal",
+            "greater_than",
+            "less_than",
+            "list_too_short",
+            "list_too_long",
+        ],
+    )
+    async def test_constrained_field_error(
+        self, payload_override: dict, expected_error: str
+    ) -> None:
+        """Test that constrained field violations produce specific error messages."""
 
-        response = await self.client.post(
-            "/validate-constrained",
-            json={"username": "ab", "score": 50, "rating": 2.5, "color": "red", "tags": ["a"]},
-        )
-
-        assert response.status_code == HTTPStatus.BAD_REQUEST
-        data = response.json()
-        assert data["error"] == "Field 'username' must be at least 3 characters"
-
-    @pytest.mark.asyncio
-    async def test_string_too_long_includes_max_length(self) -> None:
-        """Test that string_too_long error includes the maximum length."""
-
-        response = await self.client.post(
-            "/validate-constrained",
-            json={"username": "a" * 21, "score": 50, "rating": 2.5, "color": "red", "tags": ["a"]},
-        )
-
-        assert response.status_code == HTTPStatus.BAD_REQUEST
-        data = response.json()
-        assert data["error"] == "Field 'username' must be at most 20 characters"
-
-    @pytest.mark.asyncio
-    async def test_greater_than_equal_includes_minimum(self) -> None:
-        """Test that greater_than_equal error includes the minimum value."""
-
-        response = await self.client.post(
-            "/validate-constrained",
-            json={"username": "alice", "score": -1, "rating": 2.5, "color": "red", "tags": ["a"]},
-        )
+        payload = {**_VALID_CONSTRAINED_PAYLOAD, **payload_override}
+        response = await self.client.post("/validate-constrained", json=payload)
 
         assert response.status_code == HTTPStatus.BAD_REQUEST
         data = response.json()
-        assert data["error"] == "Field 'score' must be at least 0"
-
-    @pytest.mark.asyncio
-    async def test_less_than_equal_includes_maximum(self) -> None:
-        """Test that less_than_equal error includes the maximum value."""
-
-        response = await self.client.post(
-            "/validate-constrained",
-            json={"username": "alice", "score": 101, "rating": 2.5, "color": "red", "tags": ["a"]},
-        )
-
-        assert response.status_code == HTTPStatus.BAD_REQUEST
-        data = response.json()
-        assert data["error"] == "Field 'score' must be at most 100"
-
-    @pytest.mark.asyncio
-    async def test_greater_than_includes_bound(self) -> None:
-        """Test that greater_than error includes the bound value."""
-
-        response = await self.client.post(
-            "/validate-constrained",
-            json={"username": "alice", "score": 50, "rating": 0, "color": "red", "tags": ["a"]},
-        )
-
-        assert response.status_code == HTTPStatus.BAD_REQUEST
-        data = response.json()
-        assert data["error"] == "Field 'rating' must be greater than 0"
-
-    @pytest.mark.asyncio
-    async def test_less_than_includes_bound(self) -> None:
-        """Test that less_than error includes the bound value."""
-
-        response = await self.client.post(
-            "/validate-constrained",
-            json={"username": "alice", "score": 50, "rating": 5, "color": "red", "tags": ["a"]},
-        )
-
-        assert response.status_code == HTTPStatus.BAD_REQUEST
-        data = response.json()
-        assert data["error"] == "Field 'rating' must be less than 5"
+        assert data["error"] == expected_error
 
     @pytest.mark.asyncio
     async def test_enum_includes_expected_values(self) -> None:
         """Test that enum error includes the allowed values."""
 
-        response = await self.client.post(
-            "/validate-constrained",
-            json={"username": "alice", "score": 50, "rating": 2.5, "color": "purple", "tags": ["a"]},
-        )
+        payload = {**_VALID_CONSTRAINED_PAYLOAD, "color": "purple"}
+        response = await self.client.post("/validate-constrained", json=payload)
 
         assert response.status_code == HTTPStatus.BAD_REQUEST
         data = response.json()
         assert "color" in data["error"]
         assert "must be one of" in data["error"]
-
-    @pytest.mark.asyncio
-    async def test_list_too_short_includes_min_length(self) -> None:
-        """Test that too_short error for lists includes the minimum count."""
-
-        response = await self.client.post(
-            "/validate-constrained",
-            json={"username": "alice", "score": 50, "rating": 2.5, "color": "red", "tags": []},
-        )
-
-        assert response.status_code == HTTPStatus.BAD_REQUEST
-        data = response.json()
-        assert data["error"] == "Field 'tags' must have at least 1 item"
-
-    @pytest.mark.asyncio
-    async def test_list_too_long_includes_max_length(self) -> None:
-        """Test that too_long error for lists includes the maximum count."""
-
-        response = await self.client.post(
-            "/validate-constrained",
-            json={
-                "username": "alice",
-                "score": 50,
-                "rating": 2.5,
-                "color": "red",
-                "tags": ["a", "b", "c", "d", "e", "f"],
-            },
-        )
-
-        assert response.status_code == HTTPStatus.BAD_REQUEST
-        data = response.json()
-        assert data["error"] == "Field 'tags' must have at most 5 items"
 
     @pytest.mark.asyncio
     async def test_value_error_strips_pydantic_prefix(self) -> None:
@@ -217,10 +148,7 @@ class TestConstrainedValidationErrors:
     async def test_valid_constrained_request_succeeds(self) -> None:
         """Test that a valid request with all constraints met succeeds."""
 
-        response = await self.client.post(
-            "/validate-constrained",
-            json={"username": "alice", "score": 50, "rating": 2.5, "color": "red", "tags": ["a"]},
-        )
+        response = await self.client.post("/validate-constrained", json=_VALID_CONSTRAINED_PAYLOAD)
 
         assert response.status_code == HTTPStatus.OK
         data = response.json()
@@ -307,247 +235,221 @@ class TestGeneralExceptionHandler:
 
     @pytest.mark.asyncio
     async def test_general_exception_handler(self) -> None:
-        """Test that unhandled exceptions return generic 500 message.
-
-        Note: In test environments, FastAPI may re-raise exceptions instead of
-        returning the error response. This test verifies either behavior.
-        """
+        """Test that unhandled exceptions return generic 500 message."""
 
         try:
             response = await self.client.get("/general-exception")
-            # If we get a response, verify it's a 500 error
             assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
             data = response.json()
             assert data["success"] is False
             assert data["error"] == "An unexpected error occurred"
         except RuntimeError as e:
-            # In test mode, the exception may be re-raised
+            # In test mode, FastAPI may re-raise the exception
             assert str(e) == "Something went wrong"
 
 
-class TestFormatValidationErrors:
-    """Unit tests for the _format_validation_errors helper functions."""
+class TestFormatFieldLocation:
+    """Tests for _format_field_location helper."""
 
-    def test_format_field_location_simple(self) -> None:
-        """Test that simple field location is formatted correctly."""
+    @pytest.mark.parametrize(
+        ("loc", "expected"),
+        [
+            (("body", "email"), "email"),
+            (("query", "page"), "page"),
+            (("path", "id"), "id"),
+            (("body", "address", "city"), "address.city"),
+            (("body", "items", 0, "name"), "items.0.name"),
+        ],
+        ids=["body", "query", "path", "nested_object", "nested_array"],
+    )
+    def test_format_field_location(self, loc: tuple, expected: str) -> None:
+        """Test that field location tuples are formatted into human-readable names."""
 
-        assert _format_field_location(("body", "email")) == "email"
-        assert _format_field_location(("query", "page")) == "page"
-        assert _format_field_location(("path", "id")) == "id"
+        assert _format_field_location(loc) == expected
 
-    def test_format_field_location_nested(self) -> None:
-        """Test that nested field location is formatted correctly."""
 
-        assert _format_field_location(("body", "address", "city")) == "address.city"
-        assert _format_field_location(("body", "items", 0, "name")) == "items.0.name"
+class TestFormatSingleError:
+    """Tests for _format_single_error helper."""
 
-    def test_format_single_error_missing(self) -> None:
-        """Test that missing field error is formatted correctly."""
+    @pytest.mark.parametrize(
+        ("error", "expected"),
+        [
+            (
+                {"loc": ("body", "email"), "type": "missing", "msg": "Field required"},
+                "Field 'email' is required",
+            ),
+            (
+                {"loc": ("body", "age"), "type": "int_parsing", "msg": "Input should be a valid integer"},
+                "Field 'age' must be a valid integer",
+            ),
+            (
+                {"loc": ("body", "name"), "type": "string_type", "msg": "Input should be a valid string"},
+                "Field 'name' must be a string",
+            ),
+            (
+                {"loc": ("body", "email"), "type": "value_error", "msg": "Value error, Invalid email format"},
+                "Field 'email': Invalid email format",
+            ),
+            (
+                {"loc": ("body", "email"), "type": "value_error", "msg": "Invalid email format"},
+                "Field 'email': Invalid email format",
+            ),
+            (
+                {
+                    "loc": ("body", "name"),
+                    "type": "string_too_short",
+                    "msg": "String should have at least 3 characters",
+                    "ctx": {"min_length": 3},
+                },
+                "Field 'name' must be at least 3 characters",
+            ),
+            (
+                {
+                    "loc": ("body", "name"),
+                    "type": "string_too_short",
+                    "msg": "String should have at least 3 characters",
+                },
+                "Field 'name' is too short",
+            ),
+            (
+                {
+                    "loc": ("body", "bio"),
+                    "type": "string_too_long",
+                    "msg": "String should have at most 100 characters",
+                    "ctx": {"max_length": 100},
+                },
+                "Field 'bio' must be at most 100 characters",
+            ),
+            (
+                {
+                    "loc": ("body", "bio"),
+                    "type": "string_too_long",
+                    "msg": "String should have at most 100 characters",
+                },
+                "Field 'bio' is too long",
+            ),
+            (
+                {
+                    "loc": ("body", "tags"),
+                    "type": "too_short",
+                    "msg": "List should have at least 1 item after validation",
+                    "ctx": {"min_length": 1},
+                },
+                "Field 'tags' must have at least 1 item",
+            ),
+            (
+                {
+                    "loc": ("body", "tags"),
+                    "type": "too_short",
+                    "msg": "List should have at least 3 items after validation",
+                    "ctx": {"min_length": 3},
+                },
+                "Field 'tags' must have at least 3 items",
+            ),
+            (
+                {
+                    "loc": ("body", "tags"),
+                    "type": "too_long",
+                    "msg": "List should have at most 5 items after validation",
+                    "ctx": {"max_length": 5},
+                },
+                "Field 'tags' must have at most 5 items",
+            ),
+            (
+                {
+                    "loc": ("body", "tags"),
+                    "type": "too_long",
+                    "msg": "List should have at most 1 item after validation",
+                    "ctx": {"max_length": 1},
+                },
+                "Field 'tags' must have at most 1 item",
+            ),
+            (
+                {
+                    "loc": ("body", "rating"),
+                    "type": "greater_than",
+                    "msg": "Input should be greater than 0",
+                    "ctx": {"gt": 0},
+                },
+                "Field 'rating' must be greater than 0",
+            ),
+            (
+                {
+                    "loc": ("body", "score"),
+                    "type": "greater_than_equal",
+                    "msg": "Input should be greater than or equal to 0",
+                    "ctx": {"ge": 0},
+                },
+                "Field 'score' must be at least 0",
+            ),
+            (
+                {
+                    "loc": ("body", "rating"),
+                    "type": "less_than",
+                    "msg": "Input should be less than 5",
+                    "ctx": {"lt": 5},
+                },
+                "Field 'rating' must be less than 5",
+            ),
+            (
+                {
+                    "loc": ("body", "score"),
+                    "type": "less_than_equal",
+                    "msg": "Input should be less than or equal to 100",
+                    "ctx": {"le": 100},
+                },
+                "Field 'score' must be at most 100",
+            ),
+            (
+                {
+                    "loc": ("body", "color"),
+                    "type": "enum",
+                    "msg": "Input should be 'red', 'green' or 'blue'",
+                    "ctx": {"expected": "'red', 'green' or 'blue'"},
+                },
+                "Field 'color' must be one of: 'red', 'green' or 'blue'",
+            ),
+            (
+                {
+                    "loc": ("body", "color"),
+                    "type": "enum",
+                    "msg": "Input should be 'red', 'green' or 'blue'",
+                },
+                "Field 'color' has an invalid value",
+            ),
+            (
+                {
+                    "loc": ("body", "score"),
+                    "type": "greater_than_equal",
+                    "msg": "Input should be greater than or equal to 0",
+                },
+                "Field 'score' has an invalid value",
+            ),
+        ],
+        ids=[
+            "missing",
+            "int_parsing",
+            "string_type",
+            "value_error_with_prefix",
+            "value_error_without_prefix",
+            "string_too_short_with_ctx",
+            "string_too_short_without_ctx",
+            "string_too_long_with_ctx",
+            "string_too_long_without_ctx",
+            "list_too_short_singular",
+            "list_too_short_plural",
+            "list_too_long_with_ctx",
+            "list_too_long_singular",
+            "greater_than",
+            "greater_than_equal",
+            "less_than",
+            "less_than_equal",
+            "enum_with_ctx",
+            "enum_without_ctx",
+            "comparison_without_ctx",
+        ],
+    )
+    def test_format_single_error(self, error: dict, expected: str) -> None:
+        """Test that validation error dicts are formatted into human-readable messages."""
 
-        error = {"loc": ("body", "email"), "type": "missing", "msg": "Field required"}
-        assert _format_single_error(error) == "Field 'email' is required"
-
-    def test_format_single_error_wrong_type(self) -> None:
-        """Test that wrong type error is formatted correctly."""
-
-        error = {"loc": ("body", "age"), "type": "int_parsing", "msg": "Input should be a valid integer"}
-        assert _format_single_error(error) == "Field 'age' must be a valid integer"
-
-    def test_format_single_error_string_type(self) -> None:
-        """Test that string type error is formatted correctly."""
-
-        error = {"loc": ("body", "name"), "type": "string_type", "msg": "Input should be a valid string"}
-        assert _format_single_error(error) == "Field 'name' must be a string"
-
-    def test_format_single_error_value_error(self) -> None:
-        """Test that value error strips 'Value error, ' prefix."""
-
-        error = {
-            "loc": ("body", "email"),
-            "type": "value_error",
-            "msg": "Value error, Invalid email format",
-        }
-
-        assert _format_single_error(error) == "Field 'email': Invalid email format"
-
-    def test_format_single_error_value_error_without_prefix(self) -> None:
-        """Test that value error without prefix is passed through unchanged."""
-
-        error = {"loc": ("body", "email"), "type": "value_error", "msg": "Invalid email format"}
-        assert _format_single_error(error) == "Field 'email': Invalid email format"
-
-    def test_format_single_error_string_too_short_with_ctx(self) -> None:
-        """Test that string_too_short includes min_length from ctx."""
-
-        error = {
-            "loc": ("body", "name"),
-            "type": "string_too_short",
-            "msg": "String should have at least 3 characters",
-            "ctx": {"min_length": 3},
-        }
-
-        assert _format_single_error(error) == "Field 'name' must be at least 3 characters"
-
-    def test_format_single_error_string_too_short_without_ctx(self) -> None:
-        """Test that string_too_short falls back when ctx is missing."""
-
-        error = {
-            "loc": ("body", "name"),
-            "type": "string_too_short",
-            "msg": "String should have at least 3 characters",
-        }
-
-        assert _format_single_error(error) == "Field 'name' is too short"
-
-    def test_format_single_error_string_too_long_with_ctx(self) -> None:
-        """Test that string_too_long includes max_length from ctx."""
-
-        error = {
-            "loc": ("body", "bio"),
-            "type": "string_too_long",
-            "msg": "String should have at most 100 characters",
-            "ctx": {"max_length": 100},
-        }
-
-        assert _format_single_error(error) == "Field 'bio' must be at most 100 characters"
-
-    def test_format_single_error_string_too_long_without_ctx(self) -> None:
-        """Test that string_too_long falls back when ctx is missing."""
-
-        error = {
-            "loc": ("body", "bio"),
-            "type": "string_too_long",
-            "msg": "String should have at most 100 characters",
-        }
-
-        assert _format_single_error(error) == "Field 'bio' is too long"
-
-    def test_format_single_error_too_short_with_ctx(self) -> None:
-        """Test that too_short for lists includes min_length from ctx."""
-
-        error = {
-            "loc": ("body", "tags"),
-            "type": "too_short",
-            "msg": "List should have at least 1 item after validation",
-            "ctx": {"min_length": 1},
-        }
-
-        assert _format_single_error(error) == "Field 'tags' must have at least 1 item"
-
-    def test_format_single_error_too_short_plural(self) -> None:
-        """Test that too_short uses 'items' for min_length > 1."""
-
-        error = {
-            "loc": ("body", "tags"),
-            "type": "too_short",
-            "msg": "List should have at least 3 items after validation",
-            "ctx": {"min_length": 3},
-        }
-
-        assert _format_single_error(error) == "Field 'tags' must have at least 3 items"
-
-    def test_format_single_error_too_long_with_ctx(self) -> None:
-        """Test that too_long for lists includes max_length from ctx."""
-
-        error = {
-            "loc": ("body", "tags"),
-            "type": "too_long",
-            "msg": "List should have at most 5 items after validation",
-            "ctx": {"max_length": 5},
-        }
-
-        assert _format_single_error(error) == "Field 'tags' must have at most 5 items"
-
-    def test_format_single_error_too_long_singular(self) -> None:
-        """Test that too_long uses 'item' for max_length == 1."""
-
-        error = {
-            "loc": ("body", "tags"),
-            "type": "too_long",
-            "msg": "List should have at most 1 item after validation",
-            "ctx": {"max_length": 1},
-        }
-
-        assert _format_single_error(error) == "Field 'tags' must have at most 1 item"
-
-    def test_format_single_error_greater_than_with_ctx(self) -> None:
-        """Test that greater_than includes bound from ctx."""
-
-        error = {
-            "loc": ("body", "rating"),
-            "type": "greater_than",
-            "msg": "Input should be greater than 0",
-            "ctx": {"gt": 0},
-        }
-
-        assert _format_single_error(error) == "Field 'rating' must be greater than 0"
-
-    def test_format_single_error_greater_than_equal_with_ctx(self) -> None:
-        """Test that greater_than_equal includes bound from ctx."""
-
-        error = {
-            "loc": ("body", "score"),
-            "type": "greater_than_equal",
-            "msg": "Input should be greater than or equal to 0",
-            "ctx": {"ge": 0},
-        }
-
-        assert _format_single_error(error) == "Field 'score' must be at least 0"
-
-    def test_format_single_error_less_than_with_ctx(self) -> None:
-        """Test that less_than includes bound from ctx."""
-
-        error = {
-            "loc": ("body", "rating"),
-            "type": "less_than",
-            "msg": "Input should be less than 5",
-            "ctx": {"lt": 5},
-        }
-
-        assert _format_single_error(error) == "Field 'rating' must be less than 5"
-
-    def test_format_single_error_less_than_equal_with_ctx(self) -> None:
-        """Test that less_than_equal includes bound from ctx."""
-
-        error = {
-            "loc": ("body", "score"),
-            "type": "less_than_equal",
-            "msg": "Input should be less than or equal to 100",
-            "ctx": {"le": 100},
-        }
-
-        assert _format_single_error(error) == "Field 'score' must be at most 100"
-
-    def test_format_single_error_enum_with_ctx(self) -> None:
-        """Test that enum error includes expected values from ctx."""
-
-        error = {
-            "loc": ("body", "color"),
-            "type": "enum",
-            "msg": "Input should be 'red', 'green' or 'blue'",
-            "ctx": {"expected": "'red', 'green' or 'blue'"},
-        }
-
-        assert _format_single_error(error) == "Field 'color' must be one of: 'red', 'green' or 'blue'"
-
-    def test_format_single_error_enum_without_ctx(self) -> None:
-        """Test that enum error falls back when ctx is missing."""
-
-        error = {
-            "loc": ("body", "color"),
-            "type": "enum",
-            "msg": "Input should be 'red', 'green' or 'blue'",
-        }
-
-        assert _format_single_error(error) == "Field 'color' has an invalid value"
-
-    def test_format_single_error_comparison_without_ctx(self) -> None:
-        """Test that comparison errors fall back when ctx is missing."""
-
-        error = {
-            "loc": ("body", "score"),
-            "type": "greater_than_equal",
-            "msg": "Input should be greater than or equal to 0",
-        }
-
-        assert _format_single_error(error) == "Field 'score' has an invalid value"
+        assert _format_single_error(error) == expected

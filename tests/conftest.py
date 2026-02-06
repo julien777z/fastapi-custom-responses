@@ -1,3 +1,4 @@
+import asyncio
 from enum import Enum
 from http import HTTPStatus
 
@@ -105,8 +106,6 @@ def app() -> FastAPI:
 @pytest.fixture(autouse=True)
 async def client(request, app: FastAPI) -> AsyncClient | None:
     """Async HTTP client fixture that auto-injects into test classes."""
-
-    import asyncio
 
     # Skip for sync tests
     if not asyncio.iscoroutinefunction(request.node.obj):
