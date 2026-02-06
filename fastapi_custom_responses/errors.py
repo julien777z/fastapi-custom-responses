@@ -80,6 +80,15 @@ def _format_field_location(loc: tuple) -> str:
     return ".".join(field_parts)
 
 
+def _format_number(value: int | float) -> str:
+    """Format a numeric constraint value for display, stripping unnecessary '.0' from whole floats."""
+
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+
+    return str(value)
+
+
 def _format_single_error(error: dict) -> str:
     """Format a single Pydantic validation error into a human-readable message.
 
@@ -93,6 +102,7 @@ def _format_single_error(error: dict) -> str:
     field = _format_field_location(error.get("loc", ()))
     error_type = error.get("type", "")
     msg = error.get("msg", "")
+    ctx = error.get("ctx", {})
 
     # Map common Pydantic error types to human-readable messages
     match error_type:
@@ -107,18 +117,56 @@ def _format_single_error(error: dict) -> str:
         case "bool_type" | "bool_parsing":
             return f"Field '{field}' must be a boolean"
         case "enum":
+            expected = ctx.get("expected", "")
+            if expected:
+                return f"Field '{field}' must be one of: {expected}"
             return f"Field '{field}' has an invalid value"
         case "uuid_type" | "uuid_parsing":
             return f"Field '{field}' must be a valid UUID"
         case "string_too_short":
+            min_len = ctx.get("min_length")
+            if min_len is not None:
+                return f"Field '{field}' must be at least {min_len} characters"
             return f"Field '{field}' is too short"
         case "string_too_long":
+            max_len = ctx.get("max_length")
+            if max_len is not None:
+                return f"Field '{field}' must be at most {max_len} characters"
             return f"Field '{field}' is too long"
-        case "greater_than" | "greater_than_equal" | "less_than" | "less_than_equal":
-            return f"Field '{field}' has an invalid value: {msg}"
+        case "too_short":
+            min_len = ctx.get("min_length")
+            if min_len is not None:
+                return f"Field '{field}' must have at least {min_len} {'item' if min_len == 1 else 'items'}"
+            return f"Field '{field}' has too few items"
+        case "too_long":
+            max_len = ctx.get("max_length")
+            if max_len is not None:
+                return f"Field '{field}' must have at most {max_len} {'item' if max_len == 1 else 'items'}"
+            return f"Field '{field}' has too many items"
+        case "greater_than":
+            gt = ctx.get("gt")
+            if gt is not None:
+                return f"Field '{field}' must be greater than {_format_number(gt)}"
+            return f"Field '{field}' has an invalid value"
+        case "greater_than_equal":
+            ge = ctx.get("ge")
+            if ge is not None:
+                return f"Field '{field}' must be at least {_format_number(ge)}"
+            return f"Field '{field}' has an invalid value"
+        case "less_than":
+            lt = ctx.get("lt")
+            if lt is not None:
+                return f"Field '{field}' must be less than {_format_number(lt)}"
+            return f"Field '{field}' has an invalid value"
+        case "less_than_equal":
+            le = ctx.get("le")
+            if le is not None:
+                return f"Field '{field}' must be at most {_format_number(le)}"
+            return f"Field '{field}' has an invalid value"
         case "value_error":
-            # Use the message directly for value errors as they're typically already human-readable
-            return f"Field '{field}': {msg}"
+            # Pydantic prefixes with "Value error, " -- strip it
+            clean_msg = msg.removeprefix("Value error, ")
+            return f"Field '{field}': {clean_msg}"
         case "json_invalid":
             return "Invalid JSON in request body"
         case _:

@@ -1,9 +1,10 @@
+from enum import Enum
 from http import HTTPStatus
 
 import pytest
 from fastapi import FastAPI, HTTPException
 from httpx import ASGITransport, AsyncClient
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 from fastapi_custom_responses import EXCEPTION_HANDLERS, ErrorResponse
 
@@ -16,6 +17,40 @@ class _TestPayload(BaseModel):
     email: str
 
 
+class _Color(str, Enum):
+    """Test enum for enum validation tests."""
+
+    RED = "red"
+    GREEN = "green"
+    BLUE = "blue"
+
+
+class _ConstrainedPayload(BaseModel):
+    """Test model with field constraints for detailed error messages."""
+
+    username: str = Field(..., min_length=3, max_length=20)
+    score: int = Field(..., ge=0, le=100)
+    rating: float = Field(..., gt=0, lt=5)
+    color: _Color
+    tags: list[str] = Field(..., min_length=1, max_length=5)
+
+
+class _ValueErrorPayload(BaseModel):
+    """Test model with a custom validator that raises ValueError."""
+
+    code: str
+
+    @field_validator("code")
+    @classmethod
+    def validate_code(cls, v: str) -> str:
+        """Validate code format."""
+
+        if not v.isdigit() or len(v) != 4:
+            raise ValueError("Code must be exactly 4 digits")
+
+        return v
+
+
 def _create_test_app() -> FastAPI:
     """Create a minimal FastAPI app with exception handlers for testing."""
 
@@ -23,6 +58,14 @@ def _create_test_app() -> FastAPI:
 
     @app.post("/validate")
     async def validate_endpoint(payload: _TestPayload) -> dict:
+        return {"success": True, "data": payload.model_dump()}
+
+    @app.post("/validate-constrained")
+    async def validate_constrained_endpoint(payload: _ConstrainedPayload) -> dict:
+        return {"success": True, "data": payload.model_dump()}
+
+    @app.post("/validate-value-error")
+    async def validate_value_error_endpoint(payload: _ValueErrorPayload) -> dict:
         return {"success": True, "data": payload.model_dump()}
 
     @app.get("/error-response")
