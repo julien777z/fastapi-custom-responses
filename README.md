@@ -154,7 +154,7 @@ Supported Pydantic error types and their human-readable formats:
 | `too_short` / `too_long` | `Field 'items' must have at least 1 item` |
 | `greater_than` / `less_than` | `Field 'age' must be greater than 0` |
 | `greater_than_equal` / `less_than_equal` | `Field 'age' must be at least 18` |
-| `value_error` | `Field 'email': invalid email format` |
+| `value_error` | `Invalid email format` (uses the validator message directly) |
 | `json_invalid` | `Invalid JSON in request body` |
 
 Any unrecognized error types fall back to the Pydantic error message prefixed with the field name.

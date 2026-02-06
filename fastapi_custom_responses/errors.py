@@ -140,8 +140,7 @@ def _format_single_error(error: dict) -> str:
             return f"Field '{field}' has an invalid value"
         case "value_error":
             # Pydantic prefixes with "Value error, " -- strip it
-            clean_msg = msg.removeprefix("Value error, ")
-            return f"Field '{field}': {clean_msg}"
+            return msg.removeprefix("Value error, ")
         case "json_invalid":
             return "Invalid JSON in request body"
         case _:

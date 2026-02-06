@@ -142,7 +142,7 @@ class TestConstrainedValidationErrors:
 
         assert response.status_code == HTTPStatus.BAD_REQUEST
         data = response.json()
-        assert data["error"] == "Field 'code': Code must be exactly 4 digits"
+        assert data["error"] == "Code must be exactly 4 digits"
 
     @pytest.mark.asyncio
     async def test_valid_constrained_request_succeeds(self) -> None:
@@ -288,11 +288,11 @@ class TestFormatSingleError:
             ),
             (
                 {"loc": ("body", "email"), "type": "value_error", "msg": "Value error, Invalid email format"},
-                "Field 'email': Invalid email format",
+                "Invalid email format",
             ),
             (
                 {"loc": ("body", "email"), "type": "value_error", "msg": "Invalid email format"},
-                "Field 'email': Invalid email format",
+                "Invalid email format",
             ),
             (
                 {
