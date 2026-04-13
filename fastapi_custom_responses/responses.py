@@ -1,16 +1,16 @@
 from typing import Any
 
-from pydantic_super_model import SuperModel
+from pydantic_super_model import SuperModelPydanticMixin
 
 
-class SuccessResponse(SuperModel):
+class SuccessResponse(SuperModelPydanticMixin):
     """Success response without data."""
 
     success: bool
     error: str | None = None
 
 
-class Response[T](SuperModel):
+class Response[T](SuperModelPydanticMixin):
     """Response model."""
 
     success: bool
@@ -18,7 +18,7 @@ class Response[T](SuperModel):
     error: str | None = None
 
 
-class PaginationMeta(SuperModel):
+class PaginationMeta(SuperModelPydanticMixin):
     """Pagination metadata model."""
 
     offset: int
