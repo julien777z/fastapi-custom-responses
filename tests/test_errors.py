@@ -3,9 +3,9 @@ from http import HTTPStatus
 from httpx import AsyncClient
 import pytest
 
-from fastapi_custom_responses.errors import _format_field_location, _format_single_error
+from fastapi_custom_responses.errors import format_field_location, format_single_error
 
-_VALID_CONSTRAINED_PAYLOAD: dict = {
+VALID_CONSTRAINED_PAYLOAD: dict = {
     "username": "alice",
     "score": 50,
     "rating": 2.5,
@@ -115,7 +115,7 @@ class TestConstrainedValidationErrors:
     ) -> None:
         """Test that constrained field violations produce specific error messages."""
 
-        payload = {**_VALID_CONSTRAINED_PAYLOAD, **payload_override}
+        payload = {**VALID_CONSTRAINED_PAYLOAD, **payload_override}
         response = await self.client.post("/validate-constrained", json=payload)
 
         assert response.status_code == HTTPStatus.BAD_REQUEST
@@ -126,7 +126,7 @@ class TestConstrainedValidationErrors:
     async def test_enum_includes_expected_values(self) -> None:
         """Test that enum error includes the allowed values."""
 
-        payload = {**_VALID_CONSTRAINED_PAYLOAD, "color": "purple"}
+        payload = {**VALID_CONSTRAINED_PAYLOAD, "color": "purple"}
         response = await self.client.post("/validate-constrained", json=payload)
 
         assert response.status_code == HTTPStatus.BAD_REQUEST
@@ -148,7 +148,7 @@ class TestConstrainedValidationErrors:
     async def test_valid_constrained_request_succeeds(self) -> None:
         """Test that a valid request with all constraints met succeeds."""
 
-        response = await self.client.post("/validate-constrained", json=_VALID_CONSTRAINED_PAYLOAD)
+        response = await self.client.post("/validate-constrained", json=VALID_CONSTRAINED_PAYLOAD)
 
         assert response.status_code == HTTPStatus.OK
         data = response.json()
@@ -249,7 +249,7 @@ class TestGeneralExceptionHandler:
 
 
 class TestFormatFieldLocation:
-    """Tests for _format_field_location helper."""
+    """Tests for format_field_location helper."""
 
     @pytest.mark.parametrize(
         ("loc", "expected"),
@@ -265,11 +265,11 @@ class TestFormatFieldLocation:
     def test_format_field_location(self, loc: tuple, expected: str) -> None:
         """Test that field location tuples are formatted into human-readable names."""
 
-        assert _format_field_location(loc) == expected
+        assert format_field_location(loc) == expected
 
 
 class TestFormatSingleError:
-    """Tests for _format_single_error helper."""
+    """Tests for format_single_error helper."""
 
     @pytest.mark.parametrize(
         ("error", "expected"),
@@ -452,4 +452,4 @@ class TestFormatSingleError:
     def test_format_single_error(self, error: dict, expected: str) -> None:
         """Test that validation error dicts are formatted into human-readable messages."""
 
-        assert _format_single_error(error) == expected
+        assert format_single_error(error) == expected

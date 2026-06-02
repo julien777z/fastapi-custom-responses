@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, field_validator
 from fastapi_custom_responses import EXCEPTION_HANDLERS, ErrorResponse
 
 
-class _TestPayload(BaseModel):
+class ValidationPayload(BaseModel):
     """Test model for validation error tests."""
 
     name: str
@@ -18,7 +18,7 @@ class _TestPayload(BaseModel):
     email: str
 
 
-class _Color(str, Enum):
+class Color(str, Enum):
     """Test enum for enum validation tests."""
 
     RED = "red"
@@ -26,17 +26,17 @@ class _Color(str, Enum):
     BLUE = "blue"
 
 
-class _ConstrainedPayload(BaseModel):
+class ConstrainedPayload(BaseModel):
     """Test model with field constraints for detailed error messages."""
 
     username: str = Field(..., min_length=3, max_length=20)
     score: int = Field(..., ge=0, le=100)
     rating: float = Field(..., gt=0, lt=5)
-    color: _Color
+    color: Color
     tags: list[str] = Field(..., min_length=1, max_length=5)
 
 
-class _ValueErrorPayload(BaseModel):
+class ValueErrorPayload(BaseModel):
     """Test model with a custom validator that raises ValueError."""
 
     code: str
@@ -52,21 +52,21 @@ class _ValueErrorPayload(BaseModel):
         return v
 
 
-def _create_test_app() -> FastAPI:
+def create_test_app() -> FastAPI:
     """Create a minimal FastAPI app with exception handlers for testing."""
 
     app = FastAPI(exception_handlers=EXCEPTION_HANDLERS)
 
     @app.post("/validate")
-    async def validate_endpoint(payload: _TestPayload) -> dict:
+    async def validate_endpoint(payload: ValidationPayload) -> dict:
         return {"success": True, "data": payload.model_dump()}
 
     @app.post("/validate-constrained")
-    async def validate_constrained_endpoint(payload: _ConstrainedPayload) -> dict:
+    async def validate_constrained_endpoint(payload: ConstrainedPayload) -> dict:
         return {"success": True, "data": payload.model_dump()}
 
     @app.post("/validate-value-error")
-    async def validate_value_error_endpoint(payload: _ValueErrorPayload) -> dict:
+    async def validate_value_error_endpoint(payload: ValueErrorPayload) -> dict:
         return {"success": True, "data": payload.model_dump()}
 
     @app.get("/error-response")
@@ -100,7 +100,7 @@ def _create_test_app() -> FastAPI:
 def app() -> FastAPI:
     """FastAPI app fixture."""
 
-    return _create_test_app()
+    return create_test_app()
 
 
 @pytest.fixture(autouse=True)
