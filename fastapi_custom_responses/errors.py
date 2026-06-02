@@ -63,7 +63,7 @@ class ErrorResponse(Exception):
         )
 
 
-def _format_field_location(loc: tuple[int | str, ...]) -> str:
+def format_field_location(loc: tuple[int | str, ...]) -> str:
     """Extract the field name from a validation error location tuple."""
 
     # Filter out 'body', 'query', 'path' prefixes and join remaining parts
@@ -76,7 +76,7 @@ def _format_field_location(loc: tuple[int | str, ...]) -> str:
     return ".".join(field_parts)
 
 
-def _format_number(value: int | float) -> str:
+def format_number(value: int | float) -> str:
     """Format a numeric constraint value for display, stripping unnecessary '.0' from whole floats."""
 
     if isinstance(value, float) and value.is_integer():
@@ -125,7 +125,7 @@ CONSTRAINT_RULES: Final[dict[str, ConstraintRule]] = {
 }
 
 
-def _format_constraint_error(field: str, ctx: dict, rule: ConstraintRule) -> str:
+def format_constraint_error(field: str, ctx: dict, rule: ConstraintRule) -> str:
     """Format a constraint violation from its rule, falling back when the bound is absent from ctx."""
 
     value = ctx.get(rule.ctx_key)
@@ -134,13 +134,13 @@ def _format_constraint_error(field: str, ctx: dict, rule: ConstraintRule) -> str
 
     unit = "item" if value == 1 else "items"
 
-    return f"Field '{field}' {rule.template.format(value=_format_number(value), unit=unit)}"
+    return f"Field '{field}' {rule.template.format(value=format_number(value), unit=unit)}"
 
 
-def _format_single_error(error: dict) -> str:
+def format_single_error(error: dict) -> str:
     """Format a single Pydantic validation error into a human-readable message."""
 
-    field = _format_field_location(error.get("loc", ()))
+    field = format_field_location(error.get("loc", ()))
     error_type = error.get("type", "")
     msg = error.get("msg", "")
     ctx = error.get("ctx", {})
@@ -150,7 +150,7 @@ def _format_single_error(error: dict) -> str:
 
     rule = CONSTRAINT_RULES.get(error_type)
     if rule is not None:
-        return _format_constraint_error(field, ctx, rule)
+        return format_constraint_error(field, ctx, rule)
 
     match error_type:
         case "enum":
@@ -171,7 +171,7 @@ def _format_single_error(error: dict) -> str:
             return f"Field '{field}' is invalid"
 
 
-def _format_validation_errors(exc: RequestValidationError) -> str:
+def format_validation_errors(exc: RequestValidationError) -> str:
     """Format all validation errors into a single human-readable message."""
 
     errors = exc.errors()
@@ -179,10 +179,10 @@ def _format_validation_errors(exc: RequestValidationError) -> str:
     if not errors:
         return ERROR_MESSAGES[HTTPStatus.BAD_REQUEST]
 
-    return ". ".join(_format_single_error(error) for error in errors)
+    return ". ".join(format_single_error(error) for error in errors)
 
 
-def _error_json_response(status_code: int, error: str) -> JSONResponse:
+def error_json_response(status_code: int, error: str) -> JSONResponse:
     """Build the standard `{success: false, error: ...}` JSON response."""
 
     response = Response(success=False, error=error)
@@ -190,52 +190,52 @@ def _error_json_response(status_code: int, error: str) -> JSONResponse:
     return JSONResponse(status_code=status_code, content=response.model_dump(mode="json"))
 
 
-def _validation_exception_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
+def validation_exception_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
     """Handle validation errors from pydantic models with human-readable messages."""
 
     logger.warning("Validation error: %s", exc.errors())
 
-    return _error_json_response(HTTPStatus.BAD_REQUEST, _format_validation_errors(exc))
+    return error_json_response(HTTPStatus.BAD_REQUEST, format_validation_errors(exc))
 
 
-def _value_error_handler(_: Request, exc: ValueError) -> JSONResponse:
+def value_error_handler(_: Request, exc: ValueError) -> JSONResponse:
     """Handle value errors, e.g., Pydantic validation errors."""
 
     logger.exception(exc)
 
-    return _error_json_response(HTTPStatus.BAD_REQUEST, str(exc))
+    return error_json_response(HTTPStatus.BAD_REQUEST, str(exc))
 
 
-def _error_response_handler(_: Request, exc: ErrorResponse) -> JSONResponse:
+def error_response_handler(_: Request, exc: ErrorResponse) -> JSONResponse:
     """Convert ErrorResponse exceptions to proper JSONResponse objects."""
 
     logger.info("ErrorResponse: %s - %s", exc.status_code, exc.error)
 
-    return _error_json_response(exc.status_code, exc.error)
+    return error_json_response(exc.status_code, exc.error)
 
 
-def _general_exception_handler(_: Request, exc: Exception) -> JSONResponse:
+def general_exception_handler(_: Request, exc: Exception) -> JSONResponse:
     """Handle all unhandled exceptions."""
 
     logger.exception(exc)
 
-    return _error_json_response(
+    return error_json_response(
         HTTPStatus.INTERNAL_SERVER_ERROR, ERROR_MESSAGES[HTTPStatus.INTERNAL_SERVER_ERROR]
     )
 
 
-def _http_exception_handler(_: Request, exc: HTTPException) -> JSONResponse:
+def http_exception_handler(_: Request, exc: HTTPException) -> JSONResponse:
     """Convert HTTPException to our standard error format."""
 
     error_message = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
 
-    return _error_json_response(exc.status_code, error_message)
+    return error_json_response(exc.status_code, error_message)
 
 
 EXCEPTION_HANDLERS: dict[type[Exception], Callable[[Request, Exception], JSONResponse]] = {
-    HTTPException: _http_exception_handler,
-    RequestValidationError: _validation_exception_handler,
-    ValueError: _value_error_handler,
-    ErrorResponse: _error_response_handler,
-    Exception: _general_exception_handler,
+    HTTPException: http_exception_handler,
+    RequestValidationError: validation_exception_handler,
+    ValueError: value_error_handler,
+    ErrorResponse: error_response_handler,
+    Exception: general_exception_handler,
 }
