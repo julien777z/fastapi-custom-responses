@@ -1,5 +1,3 @@
-from typing import Any
-
 from pydantic_super_model import SuperModelPydanticMixin
 
 
@@ -26,7 +24,7 @@ class PaginationMeta(SuperModelPydanticMixin):
     total: int
 
 
-class PaginatedResponse[T: Any](Response[list[T]]):
+class PaginatedResponse[T](Response[list[T]]):
     """Paginated response model."""
 
     meta: PaginationMeta
