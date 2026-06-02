@@ -20,6 +20,20 @@ ERROR_MESSAGES: Final[dict[int, str]] = {
     HTTPStatus.INTERNAL_SERVER_ERROR: "An unexpected error occurred",
 }
 
+SIMPLE_TYPE_MESSAGES: Final[dict[str, str]] = {
+    "missing": "is required",
+    "string_type": "must be a string",
+    "str_type": "must be a string",
+    "int_type": "must be a valid integer",
+    "int_parsing": "must be a valid integer",
+    "float_type": "must be a valid number",
+    "float_parsing": "must be a valid number",
+    "bool_type": "must be a boolean",
+    "bool_parsing": "must be a boolean",
+    "uuid_type": "must be a valid UUID",
+    "uuid_parsing": "must be a valid UUID",
+}
+
 
 class ErrorResponseModel(BaseModel):
     """Pydantic model for error response schema. Use this in FastAPI's `responses` parameter to document the error response schema."""
@@ -49,7 +63,7 @@ class ErrorResponse(Exception):
         )
 
 
-def _format_field_location(loc: tuple) -> str:
+def _format_field_location(loc: tuple[int | str, ...]) -> str:
     """Extract the field name from a validation error location tuple."""
 
     # Filter out 'body', 'query', 'path' prefixes and join remaining parts
@@ -71,6 +85,58 @@ def _format_number(value: int | float) -> str:
     return str(value)
 
 
+class ConstraintRule(BaseModel):
+    """Maps a Pydantic constraint error type to its `ctx` key, message template, and fallback."""
+
+    ctx_key: str
+    template: str
+    fallback: str
+
+
+CONSTRAINT_RULES: Final[dict[str, ConstraintRule]] = {
+    "string_too_short": ConstraintRule(
+        ctx_key="min_length", template="must be at least {value} characters", fallback="is too short"
+    ),
+    "string_too_long": ConstraintRule(
+        ctx_key="max_length", template="must be at most {value} characters", fallback="is too long"
+    ),
+    "too_short": ConstraintRule(
+        ctx_key="min_length",
+        template="must have at least {value} {unit}",
+        fallback="has too few items",
+    ),
+    "too_long": ConstraintRule(
+        ctx_key="max_length",
+        template="must have at most {value} {unit}",
+        fallback="has too many items",
+    ),
+    "greater_than": ConstraintRule(
+        ctx_key="gt", template="must be greater than {value}", fallback="has an invalid value"
+    ),
+    "greater_than_equal": ConstraintRule(
+        ctx_key="ge", template="must be at least {value}", fallback="has an invalid value"
+    ),
+    "less_than": ConstraintRule(
+        ctx_key="lt", template="must be less than {value}", fallback="has an invalid value"
+    ),
+    "less_than_equal": ConstraintRule(
+        ctx_key="le", template="must be at most {value}", fallback="has an invalid value"
+    ),
+}
+
+
+def _format_constraint_error(field: str, ctx: dict, rule: ConstraintRule) -> str:
+    """Format a constraint violation from its rule, falling back when the bound is absent from ctx."""
+
+    value = ctx.get(rule.ctx_key)
+    if value is None:
+        return f"Field '{field}' {rule.fallback}"
+
+    unit = "item" if value == 1 else "items"
+
+    return f"Field '{field}' {rule.template.format(value=_format_number(value), unit=unit)}"
+
+
 def _format_single_error(error: dict) -> str:
     """Format a single Pydantic validation error into a human-readable message."""
 
@@ -79,64 +145,18 @@ def _format_single_error(error: dict) -> str:
     msg = error.get("msg", "")
     ctx = error.get("ctx", {})
 
-    # Map common Pydantic error types to human-readable messages
+    if error_type in SIMPLE_TYPE_MESSAGES:
+        return f"Field '{field}' {SIMPLE_TYPE_MESSAGES[error_type]}"
+
+    rule = CONSTRAINT_RULES.get(error_type)
+    if rule is not None:
+        return _format_constraint_error(field, ctx, rule)
+
     match error_type:
-        case "missing":
-            return f"Field '{field}' is required"
-        case "string_type" | "str_type":
-            return f"Field '{field}' must be a string"
-        case "int_type" | "int_parsing":
-            return f"Field '{field}' must be a valid integer"
-        case "float_type" | "float_parsing":
-            return f"Field '{field}' must be a valid number"
-        case "bool_type" | "bool_parsing":
-            return f"Field '{field}' must be a boolean"
         case "enum":
             expected = ctx.get("expected", "")
             if expected:
                 return f"Field '{field}' must be one of: {expected}"
-            return f"Field '{field}' has an invalid value"
-        case "uuid_type" | "uuid_parsing":
-            return f"Field '{field}' must be a valid UUID"
-        case "string_too_short":
-            min_len = ctx.get("min_length")
-            if min_len is not None:
-                return f"Field '{field}' must be at least {min_len} characters"
-            return f"Field '{field}' is too short"
-        case "string_too_long":
-            max_len = ctx.get("max_length")
-            if max_len is not None:
-                return f"Field '{field}' must be at most {max_len} characters"
-            return f"Field '{field}' is too long"
-        case "too_short":
-            min_len = ctx.get("min_length")
-            if min_len is not None:
-                return f"Field '{field}' must have at least {min_len} {'item' if min_len == 1 else 'items'}"
-            return f"Field '{field}' has too few items"
-        case "too_long":
-            max_len = ctx.get("max_length")
-            if max_len is not None:
-                return f"Field '{field}' must have at most {max_len} {'item' if max_len == 1 else 'items'}"
-            return f"Field '{field}' has too many items"
-        case "greater_than":
-            gt = ctx.get("gt")
-            if gt is not None:
-                return f"Field '{field}' must be greater than {_format_number(gt)}"
-            return f"Field '{field}' has an invalid value"
-        case "greater_than_equal":
-            ge = ctx.get("ge")
-            if ge is not None:
-                return f"Field '{field}' must be at least {_format_number(ge)}"
-            return f"Field '{field}' has an invalid value"
-        case "less_than":
-            lt = ctx.get("lt")
-            if lt is not None:
-                return f"Field '{field}' must be less than {_format_number(lt)}"
-            return f"Field '{field}' has an invalid value"
-        case "less_than_equal":
-            le = ctx.get("le")
-            if le is not None:
-                return f"Field '{field}' must be at most {_format_number(le)}"
             return f"Field '{field}' has an invalid value"
         case "value_error":
             # Pydantic prefixes with "Value error, " -- strip it
@@ -159,13 +179,15 @@ def _format_validation_errors(exc: RequestValidationError) -> str:
     if not errors:
         return ERROR_MESSAGES[HTTPStatus.BAD_REQUEST]
 
-    if len(errors) == 1:
-        return _format_single_error(errors[0])
+    return ". ".join(_format_single_error(error) for error in errors)
 
-    # Multiple errors: combine them with periods
-    formatted_errors = [_format_single_error(error) for error in errors]
 
-    return ". ".join(formatted_errors)
+def _error_json_response(status_code: int, error: str) -> JSONResponse:
+    """Build the standard `{success: false, error: ...}` JSON response."""
+
+    response = Response(success=False, error=error)
+
+    return JSONResponse(status_code=status_code, content=response.model_dump(mode="json"))
 
 
 def _validation_exception_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
@@ -173,13 +195,7 @@ def _validation_exception_handler(_: Request, exc: RequestValidationError) -> JS
 
     logger.warning("Validation error: %s", exc.errors())
 
-    error_message = _format_validation_errors(exc)
-    response = Response(success=False, error=error_message)
-
-    return JSONResponse(
-        status_code=HTTPStatus.BAD_REQUEST,
-        content=response.model_dump(mode="json"),
-    )
+    return _error_json_response(HTTPStatus.BAD_REQUEST, _format_validation_errors(exc))
 
 
 def _value_error_handler(_: Request, exc: ValueError) -> JSONResponse:
@@ -187,12 +203,7 @@ def _value_error_handler(_: Request, exc: ValueError) -> JSONResponse:
 
     logger.exception(exc)
 
-    response = Response(success=False, error=str(exc))
-
-    return JSONResponse(
-        status_code=HTTPStatus.BAD_REQUEST,
-        content=response.model_dump(mode="json"),
-    )
+    return _error_json_response(HTTPStatus.BAD_REQUEST, str(exc))
 
 
 def _error_response_handler(_: Request, exc: ErrorResponse) -> JSONResponse:
@@ -200,12 +211,7 @@ def _error_response_handler(_: Request, exc: ErrorResponse) -> JSONResponse:
 
     logger.info("ErrorResponse: %s - %s", exc.status_code, exc.error)
 
-    response = Response(success=False, error=exc.error)
-
-    return JSONResponse(
-        status_code=exc.status_code,
-        content=response.model_dump(mode="json"),
-    )
+    return _error_json_response(exc.status_code, exc.error)
 
 
 def _general_exception_handler(_: Request, exc: Exception) -> JSONResponse:
@@ -213,11 +219,8 @@ def _general_exception_handler(_: Request, exc: Exception) -> JSONResponse:
 
     logger.exception(exc)
 
-    response = Response(success=False, error=ERROR_MESSAGES[HTTPStatus.INTERNAL_SERVER_ERROR])
-
-    return JSONResponse(
-        status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-        content=response.model_dump(mode="json"),
+    return _error_json_response(
+        HTTPStatus.INTERNAL_SERVER_ERROR, ERROR_MESSAGES[HTTPStatus.INTERNAL_SERVER_ERROR]
     )
 
 
@@ -225,12 +228,8 @@ def _http_exception_handler(_: Request, exc: HTTPException) -> JSONResponse:
     """Convert HTTPException to our standard error format."""
 
     error_message = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
-    response = Response(success=False, error=error_message)
 
-    return JSONResponse(
-        status_code=exc.status_code,
-        content=response.model_dump(mode="json"),
-    )
+    return _error_json_response(exc.status_code, error_message)
 
 
 EXCEPTION_HANDLERS: dict[type[Exception], Callable[[Request, Exception], JSONResponse]] = {
