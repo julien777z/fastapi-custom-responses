@@ -1,7 +1,7 @@
 from http import HTTPStatus
 
-from httpx import AsyncClient
 import pytest
+from httpx import AsyncClient
 
 from fastapi_custom_responses.errors import format_field_location, format_single_error
 
@@ -110,9 +110,7 @@ class TestConstrainedValidationErrors:
             "list_too_long",
         ],
     )
-    async def test_constrained_field_error(
-        self, payload_override: dict, expected_error: str
-    ) -> None:
+    async def test_constrained_field_error(self, payload_override: dict, expected_error: str) -> None:
         """Test that constrained field violations produce specific error messages."""
 
         payload = {**VALID_CONSTRAINED_PAYLOAD, **payload_override}

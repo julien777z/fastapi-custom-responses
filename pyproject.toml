@@ -11,8 +11,8 @@ homepage = "https://github.com/julien777z/fastapi-custom-responses"
 packages = [{include = "fastapi_custom_responses"}]
 requires-python = ">=3.11,<3.15"
 dependencies = [
-    "pydantic>=2.10.6",
-    "fastapi[standard]>=0.115.14",
+    "pydantic>=2.13.4",
+    "fastapi[standard]>=0.139.0",
     "pydantic-super-model>=2.0.0",
 ]
 
@@ -26,12 +26,12 @@ line_length = 110
 
 [project.optional-dependencies]
 dev = [
-    "black (>=24.3.0,<25.0.0)",
-    "isort (>=5.12.0,<6.0.0)",
-    "pylint (>=3.0.1,<4.0.0)",
-    "pytest (>=8.0.0)",
-    "pytest-asyncio (>=0.24.0)",
-    "httpx (>=0.27.0)",
+    "black (>=26.5.1,<27.0.0)",
+    "isort (>=8.0.1,<9.0.0)",
+    "pylint (>=4.0.6,<5.0.0)",
+    "pytest (>=9.1.1)",
+    "pytest-asyncio (>=1.4.0)",
+    "httpx (>=0.28.1)",
 ]
 
 [tool.pytest.ini_options]
