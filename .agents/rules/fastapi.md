@@ -1,6 +1,8 @@
 ---
 description: Use APIRouter-based route organization, validate in models, and keep response handling consistent.
-alwaysApply: true
+globs:
+- '**/*.py'
+alwaysApply: false
 ---
 
 # FastAPI Rules
