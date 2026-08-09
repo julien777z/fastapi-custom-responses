@@ -3,6 +3,8 @@ description: Use APIRouter-based route organization, validate in models, and kee
 globs:
 - '**/*.py'
 alwaysApply: false
+paths:
+- '**/*.py'
 ---
 
 # FastAPI Rules
