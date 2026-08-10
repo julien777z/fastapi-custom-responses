@@ -13,7 +13,7 @@ paths:
 
 - Each app follows one dependency direction: `routes/` → `services/` → `lib/` → generated clients / ORM. Never invert it.
 - Tier ownership:
-  - `routes/`: `@router.<verb>(...)` handlers, the `router = APIRouter(...)` declaration, and dependency *wiring* (`Depends(...)`, `Annotated` aliases). No business logic.
+  - `routes/`: `@<surface>_router.<verb>(...)` handlers, the `<surface>_router = APIRouter(...)` declaration, and dependency *wiring* (`Depends(...)`, `Annotated` aliases). No business logic.
   - `services/<surface>.py`: route-facing orchestration (multi-step flows, policy decisions that span calls, response assembly) and FastAPI dependency functions. Sub-split large surfaces into a `services/<surface>/` package with topic-named modules and an empty `__init__.py`; consumers import the specific submodule.
   - `lib/<domain>/`: gateways (internal-service transport), persistence helpers, caches, and policy/domain helpers with no route-facing signatures.
 - **One call per handler**: a handler makes exactly one service call (for flows with policy or orchestration) or one lib-gateway call (pure pass-through). If a handler stitches two calls together, branches on an intermediate result, or shapes data between calls, that orchestration belongs in a service function (for example: fetch → transform → respond, reject → notify, or validate → perform).
@@ -24,9 +24,11 @@ paths:
 
 - Use `APIRouter` for grouping related routes.
 - Keep route handlers thin; delegate business logic to service modules in `services/`.
-- Services should be imported as modules when that keeps route files clearer and avoids large symbol import lists.
+- Import the service functions a route file calls, by name. A route file that reaches through a service module hides which of its functions the file depends on, and a long symbol list is a signal the route file covers too many surfaces, not a reason to import the module.
+- A handler that shares a name with the service function it calls is a naming defect. The handler name is the API contract (it becomes the OpenAPI operation id), so rename the service function for the domain operation it performs.
+- Name every router for the surface it serves (`invoices_router`, not `router`), so the application entrypoint imports each one by name instead of reaching through its module.
 - Include routers via a `for` loop over a tuple; for a single router, use a one-item tuple with a trailing comma.
-- Route files should contain only `@router.<verb>(...)` handlers, the `router = APIRouter(...)` declaration, and module-level constants/dependency factories that wire those handlers; cache-key builders, response shapers, validation/transform helpers, and shared sub-handlers belong in `services/` or `lib/`.
+- Route files should contain only `@<surface>_router.<verb>(...)` handlers, the router declaration, and module-level constants/dependency factories that wire those handlers; cache-key builders, response shapers, validation/transform helpers, and shared sub-handlers belong in `services/` or `lib/`.
 - Do not place a non-routing module under `routes/` so other route files can import from it; helper modules belong in `services/` or `lib/`.
 
 ```python
@@ -119,11 +121,13 @@ async def verify_resource(payload: VerifyPayload) -> ApiEnvelope[VerifyResponse]
 - Fetch the data first, then return the response object.
 
 ```python
+from application.services.resources import get_resource_status
+
 # Bad
-return ApiEnvelope(success=True, data=await resource_service.get_status(principal, session))
+return ApiEnvelope(success=True, data=await get_resource_status(principal, session))
 
 # Good
-data = await resource_service.get_status(principal, session)
+data = await get_resource_status(principal, session)
 
 return ApiEnvelope(success=True, data=data)
 ```
