@@ -37,6 +37,8 @@ SIMPLE_TYPE_MESSAGES: Final[dict[str, str]] = {
     "uuid_parsing": "must be a valid UUID",
 }
 
+type ResponseSpec = type[ErrorCode] | type[BaseModel] | None
+
 
 class ErrorCode(StrEnum):
     """Base class for stable error identifiers clients can branch on."""
@@ -256,9 +258,6 @@ def http_exception_handler(_: Request, exc: HTTPException) -> JSONResponse:
     error_message = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
 
     return error_json_response(exc.status_code, error_message, STATUS_ERROR_CODES.get(exc.status_code))
-
-
-type ResponseSpec = type[ErrorCode] | type[BaseModel] | None
 
 
 def response_entry(status_code: HTTPStatus, spec: ResponseSpec) -> dict[str, Any]:

@@ -87,15 +87,15 @@ def create_test_app() -> FastAPI:
     async def validate_value_error_endpoint(payload: ValueErrorPayload) -> dict:
         return {"success": True, "data": payload.model_dump()}
 
-    @app.get("/response-with-data", response_model=Response[ValidationPayload])
+    @app.get("/response-with-data")
     async def response_with_data_endpoint() -> Response[ValidationPayload]:
         return Response(success=True, data=SAMPLE_PAYLOAD)
 
-    @app.get("/success-response", response_model=SuccessResponse)
+    @app.get("/success-response")
     async def success_response_endpoint() -> SuccessResponse:
         return SuccessResponse(success=True)
 
-    @app.get("/paginated-response", response_model=PaginatedResponse[ValidationPayload])
+    @app.get("/paginated-response")
     async def paginated_response_endpoint() -> PaginatedResponse[ValidationPayload]:
         return PaginatedResponse(
             success=True,
