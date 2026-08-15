@@ -6,7 +6,8 @@ Provides normalized response objects and error handling for FastAPI applications
 
 - One error envelope for every failure: validation, `HTTPException`, `ValueError`, and unhandled exceptions.
 - Pydantic validation errors rewritten as human-readable messages instead of raw error arrays.
-- Optional machine-readable `code` for clients that branch on a stable identifier.
+- A stable `code` on every error, typed as an enum you define.
+- `fastapi_responses` to build FastAPI's `responses=` mapping, documenting your codes in OpenAPI.
 - Generic `Response[T]`, `SuccessResponse`, and `PaginatedResponse[T]` envelopes for success payloads.
 - `ErrorResponseModel` for documenting error responses in OpenAPI.
 - Default messages for common status codes via `ErrorResponse.from_status_code`.
@@ -21,7 +22,7 @@ pip install fastapi-custom-responses
 
 ```py
 from http import HTTPStatus
-from fastapi_custom_responses import EXCEPTION_HANDLERS, ErrorResponse, ErrorResponseModel, Response, SuccessResponse
+from fastapi_custom_responses import EXCEPTION_HANDLERS, ErrorCode, ErrorResponse, Response, SuccessResponse, fastapi_responses
 from fastapi import APIRouter, FastAPI, Request
 from pydantic import BaseModel
 
@@ -37,13 +38,17 @@ app = FastAPI(
 class Data(BaseModel):
     example: str
 
+class AccessErrorCode(ErrorCode):
+    PERMISSION_DENIED = "permission_denied"
+    ACCOUNT_SUSPENDED = "account_suspended"
+
 @router.get(
     "/",
     response_model=Response[Data],
-    responses={
-        400: {"model": ErrorResponseModel, "description": "Bad request"},
-        500: {"model": ErrorResponseModel, "description": "Internal server error"},
-    },
+    responses=fastapi_responses({
+        HTTPStatus.FORBIDDEN: AccessErrorCode,
+        HTTPStatus.INTERNAL_SERVER_ERROR: None,
+    }),
 )
 async def index(_: Request) -> Response[Data]:
     """Index route."""
@@ -57,7 +62,11 @@ async def index(_: Request) -> Response[Data]:
 async def error_route(_: Request) -> Response:
     """Error route."""
 
-    raise ErrorResponse(error="Your request is invalid.", status_code=HTTPStatus.BAD_REQUEST)
+    raise ErrorResponse(
+        error="Your account is suspended.",
+        status_code=HTTPStatus.FORBIDDEN,
+        code=AccessErrorCode.ACCOUNT_SUSPENDED,
+    )
 ```
 
 **Note:** When using OpenAPI generators, use `SuccessResponse` instead of `Response` if your endpoint has no data to return.
@@ -69,19 +78,20 @@ Passing `EXCEPTION_HANDLERS` to your FastAPI app registers handlers that normali
 ```json
 {
   "success": false,
-  "error": "Human-readable error message"
+  "error": "Human-readable error message",
+  "code": "stable_error_identifier"
 }
 ```
 
 ### Handled Exception Types
 
-| Exception | Status Code | Behavior |
-|-----------|-------------|----------|
-| `ErrorResponse` | Custom (default `400`) | Uses the provided `error` message directly |
-| `RequestValidationError` | `400` | Pydantic validation errors are converted to human-readable messages (see below) |
-| `HTTPException` | From exception | Uses the exception `detail` as the error message |
-| `ValueError` | `400` | Uses `str(exc)` as the error message |
-| `Exception` (catch-all) | `500` | Returns a generic `"An unexpected error occurred"` message |
+| Exception | Status Code | Code | Behavior |
+|-----------|-------------|------|----------|
+| `ErrorResponse` | Custom (default `400`) | Yours, else from the status | Uses the provided `error` message directly |
+| `RequestValidationError` | `400` | `validation_error` | Pydantic validation errors are converted to human-readable messages (see below) |
+| `HTTPException` | From exception | From the status | Uses the exception `detail` as the error message |
+| `ValueError` | `400` | `invalid_value` | Uses `str(exc)` as the error message |
+| `Exception` (catch-all) | `500` | `internal_server_error` | Returns a generic `"An unexpected error occurred"` message |
 
 ### Raising Errors
 
@@ -98,39 +108,82 @@ You can also create one from a status code alone, which maps to a default messag
 
 ```py
 raise ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN)
-# → { "success": false, "error": "You don't have permission to perform this action" }
+# → { "success": false, "error": "You don't have permission to perform this action", "code": "forbidden" }
 ```
 
-Default messages for common status codes:
+Default messages and codes for common status codes:
 
-| Status Code | Default Message |
-|-------------|-----------------|
-| `401` | `"Authentication required"` |
-| `403` | `"You don't have permission to perform this action"` |
-| `404` | `"Resource not found"` |
-| `400` | `"Invalid request"` |
-| `500` | `"An unexpected error occurred"` |
+| Status Code | Default Message | Default Code |
+|-------------|-----------------|--------------|
+| `401` | `"Authentication required"` | `unauthorized` |
+| `403` | `"You don't have permission to perform this action"` | `forbidden` |
+| `404` | `"Resource not found"` | `not_found` |
+| `400` | `"Invalid request"` | `bad_request` |
+| `500` | `"An unexpected error occurred"` | `internal_server_error` |
+
+Default codes are derived from the status name, so every standard error status has one.
 
 ### Error Codes
 
-`error` is human-readable and may be reworded or localized. To let clients branch on a stable identifier, pass a `code`:
+`error` is human-readable and may be reworded or localized. `code` is the stable identifier clients branch on. Define your codes by subclassing `ErrorCode`:
+
+```py
+from fastapi_custom_responses import ErrorCode
+
+class AccessErrorCode(ErrorCode):
+    PERMISSION_DENIED = "permission_denied"
+    ACCOUNT_SUSPENDED = "account_suspended"
+```
+
+Pass a member when raising; `code` is keyword-only, and `from_status_code` accepts it too:
 
 ```py
 raise ErrorResponse(
-    error="You don't have permission to perform this action",
+    error="Your account is suspended",
     status_code=HTTPStatus.FORBIDDEN,
-    code="permission_denied",
+    code=AccessErrorCode.ACCOUNT_SUSPENDED,
 )
-# → { "success": false, "error": "You don't have permission to perform this action", "code": "permission_denied" }
+# → { "success": false, "error": "Your account is suspended", "code": "account_suspended" }
+
+raise ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN, code=AccessErrorCode.PERMISSION_DENIED)
 ```
 
-`code` is keyword-only and also accepted by `from_status_code`:
+Omit the code and it falls back to the status name, so every error response carries one:
 
 ```py
-raise ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN, code="permission_denied")
+raise ErrorResponse(error="Item not found", status_code=HTTPStatus.NOT_FOUND)
+# → { "success": false, "error": "Item not found", "code": "not_found" }
 ```
 
-The field is optional and appears only when supplied. `ErrorResponseModel` documents it as optional, so endpoints using that model in `responses=` pick it up in their OpenAPI schema.
+### Documenting Responses
+
+`fastapi_responses` builds FastAPI's `responses=` mapping. Give it an error code enum, `None` for the bare error envelope, or a success envelope:
+
+```py
+from fastapi_custom_responses import Response, SuccessResponse, fastapi_responses
+
+@router.post(
+    "/reports",
+    responses=fastapi_responses({
+        HTTPStatus.CREATED: Response[Report],
+        HTTPStatus.ACCEPTED: SuccessResponse,
+        HTTPStatus.FORBIDDEN: AccessErrorCode,
+        HTTPStatus.NOT_FOUND: None,
+    }),
+)
+```
+
+Each error code enum becomes its own named schema in the OpenAPI document, so generated clients get a real union type per domain rather than a bare string:
+
+```json
+"AccessErrorCode": { "type": "string", "enum": ["permission_denied", "account_suspended"] }
+```
+
+Error statuses are described with the library's own message rather than the generic status phrase. Entries needing `headers`, custom media types, or `links` are written directly and merge with the result:
+
+```py
+responses={**fastapi_responses({HTTPStatus.FORBIDDEN: AccessErrorCode}), HTTPStatus.NOT_MODIFIED: {"headers": {...}}}
+```
 
 ### Validation Error Normalization
 
@@ -156,7 +209,8 @@ When a request fails Pydantic validation, FastAPI normally returns a verbose JSO
 ```json
 {
   "success": false,
-  "error": "Field 'email' is required"
+  "error": "Field 'email' is required",
+  "code": "validation_error"
 }
 ```
 
@@ -165,7 +219,8 @@ When multiple fields fail validation, messages are joined with periods:
 ```json
 {
   "success": false,
-  "error": "Field 'email' is required. Field 'age' must be a valid integer"
+  "error": "Field 'email' is required. Field 'age' must be a valid integer",
+  "code": "validation_error"
 }
 ```
 
