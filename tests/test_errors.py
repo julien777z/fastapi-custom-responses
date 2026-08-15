@@ -1,10 +1,24 @@
 from http import HTTPStatus
 
 import pytest
+from fastapi import FastAPI
 from httpx import AsyncClient
+from pydantic import ValidationError
 
-from fastapi_custom_responses import ErrorResponse, ErrorResponseModel
-from fastapi_custom_responses.errors import format_field_location, format_single_error
+from fastapi_custom_responses import (
+    ErrorResponse,
+    ErrorResponseModel,
+    Response,
+    SuccessResponse,
+    fastapi_responses,
+)
+from fastapi_custom_responses.errors import (
+    STATUS_ERROR_CODES,
+    format_field_location,
+    format_single_error,
+    status_error_code,
+)
+from tests.conftest import AccessErrorCode, ValidationPayload
 
 VALID_CONSTRAINED_PAYLOAD: dict = {
     "username": "alice",
@@ -26,7 +40,11 @@ class TestValidationErrors:
         response = await self.client.post("/validate", json={"name": "John", "age": 30})
 
         assert response.status_code == HTTPStatus.BAD_REQUEST
-        assert response.json() == {"success": False, "error": "Field 'email' is required"}
+        assert response.json() == {
+            "success": False,
+            "error": "Field 'email' is required",
+            "code": "validation_error",
+        }
 
     async def test_validation_error_wrong_type(self) -> None:
         """Test that POST with wrong type returns 400 with human-readable message."""
@@ -153,7 +171,7 @@ class TestErrorResponse:
         response = await self.client.get("/error-response")
 
         assert response.status_code == HTTPStatus.BAD_REQUEST
-        assert response.json() == {"success": False, "error": "Custom error message"}
+        assert response.json() == {"success": False, "error": "Custom error message", "code": "bad_request"}
 
     async def test_error_response_custom_status_code(self) -> None:
         """Test that ErrorResponse can use different status codes."""
@@ -161,7 +179,7 @@ class TestErrorResponse:
         response = await self.client.get("/error-response-not-found")
 
         assert response.status_code == HTTPStatus.NOT_FOUND
-        assert response.json() == {"success": False, "error": "Item not found"}
+        assert response.json() == {"success": False, "error": "Item not found", "code": "not_found"}
 
     async def test_error_response_from_status_code(self) -> None:
         """Test that ErrorResponse.from_status_code() uses predefined messages."""
@@ -172,6 +190,7 @@ class TestErrorResponse:
         assert response.json() == {
             "success": False,
             "error": "You don't have permission to perform this action",
+            "code": "forbidden",
         }
 
     async def test_error_response_with_code(self) -> None:
@@ -200,7 +219,7 @@ class TestErrorResponse:
 
 
 class TestErrorResponseCode:
-    """Tests for the machine-readable code carried by ErrorResponse."""
+    """Tests for the error code carried by ErrorResponse."""
 
     def test_code_cannot_be_passed_positionally(self) -> None:
         """Test that code is keyword-only and cannot bind as a third positional argument."""
@@ -233,6 +252,134 @@ class TestErrorResponseModel:
         assert "code" in schema["properties"]
         assert "code" not in schema["required"]
 
+    def test_parametrized_accepts_a_member(self) -> None:
+        """Test that a parametrized model accepts a member of its code enum."""
+
+        model = ErrorResponseModel[AccessErrorCode](
+            success=False, error="Denied", code=AccessErrorCode.PERMISSION_DENIED
+        )
+
+        assert model.code is AccessErrorCode.PERMISSION_DENIED
+
+    def test_parametrized_rejects_an_unknown_code(self) -> None:
+        """Test that a parametrized model rejects a code outside its enum."""
+
+        with pytest.raises(ValidationError):
+            ErrorResponseModel[AccessErrorCode](success=False, error="Denied", code="bogus")
+
+    def test_parametrized_schema_enumerates_its_codes(self) -> None:
+        """Test that parametrizing the model enumerates the code enum in its schema."""
+
+        schema = ErrorResponseModel[AccessErrorCode].model_json_schema()
+
+        assert schema["$defs"]["AccessErrorCode"]["enum"] == ["permission_denied", "account_suspended"]
+
+
+class TestStatusErrorCode:
+    """Tests for codes derived from HTTP statuses."""
+
+    @pytest.mark.parametrize(
+        ("status_code", "expected_code"),
+        [
+            (HTTPStatus.UNAUTHORIZED, "unauthorized"),
+            (HTTPStatus.FORBIDDEN, "forbidden"),
+            (HTTPStatus.NOT_FOUND, "not_found"),
+            (HTTPStatus.BAD_REQUEST, "bad_request"),
+            (HTTPStatus.INTERNAL_SERVER_ERROR, "internal_server_error"),
+            (HTTPStatus.IM_A_TEAPOT, "im_a_teapot"),
+        ],
+        ids=["unauthorized", "forbidden", "not_found", "bad_request", "internal", "unusual"],
+    )
+    def test_derives_code_from_status(self, status_code: HTTPStatus, expected_code: str) -> None:
+        """Test that an error status derives its code from the status name."""
+
+        assert status_error_code(status_code) == expected_code
+
+    def test_non_standard_status_has_no_code(self) -> None:
+        """Test that a status outside HTTPStatus derives no code."""
+
+        assert status_error_code(499) is None
+
+    def test_success_statuses_have_no_code(self) -> None:
+        """Test that only error statuses derive codes."""
+
+        assert status_error_code(HTTPStatus.OK) is None
+        assert all(status >= HTTPStatus.BAD_REQUEST for status in STATUS_ERROR_CODES)
+
+
+class TestFastapiResponses:
+    """Tests for the FastAPI responses mapping helper."""
+
+    def test_error_enum_parametrizes_the_envelope(self) -> None:
+        """Test that an error code enum parametrizes the error envelope."""
+
+        responses = fastapi_responses({HTTPStatus.FORBIDDEN: AccessErrorCode})
+
+        assert responses[HTTPStatus.FORBIDDEN] == {
+            "model": ErrorResponseModel[AccessErrorCode],
+            "description": "You don't have permission to perform this action",
+        }
+
+    def test_none_documents_the_bare_envelope(self) -> None:
+        """Test that None documents the error envelope without specific codes."""
+
+        responses = fastapi_responses({HTTPStatus.NOT_FOUND: None})
+
+        assert responses[HTTPStatus.NOT_FOUND] == {
+            "model": ErrorResponseModel,
+            "description": "Resource not found",
+        }
+
+    def test_success_model_is_passed_through(self) -> None:
+        """Test that a success envelope is documented as given, leaving its description to FastAPI."""
+
+        responses = fastapi_responses({HTTPStatus.ACCEPTED: SuccessResponse})
+
+        assert responses[HTTPStatus.ACCEPTED] == {"model": SuccessResponse}
+
+    def test_status_without_a_message_omits_the_description(self) -> None:
+        """Test that a status the library has no message for carries no description."""
+
+        responses = fastapi_responses({HTTPStatus.IM_A_TEAPOT: None})
+
+        assert responses[HTTPStatus.IM_A_TEAPOT] == {"model": ErrorResponseModel}
+
+
+class TestOpenApiSchema:
+    """Tests for the OpenAPI document the library's models produce."""
+
+    def test_documents_codes_and_envelopes_per_endpoint(self) -> None:
+        """Test that each code enum and envelope becomes its own named component."""
+
+        app = FastAPI()
+
+        @app.post(
+            "/reports",
+            responses=fastapi_responses(
+                {
+                    HTTPStatus.CREATED: Response[ValidationPayload],
+                    HTTPStatus.FORBIDDEN: AccessErrorCode,
+                    HTTPStatus.NOT_FOUND: None,
+                }
+            ),
+        )
+        async def reports() -> SuccessResponse:
+            return SuccessResponse(success=True)
+
+        spec = app.openapi()
+        schemas = spec["components"]["schemas"]
+        responses = spec["paths"]["/reports"]["post"]["responses"]
+
+        assert schemas["AccessErrorCode"]["enum"] == ["permission_denied", "account_suspended"]
+        assert "ErrorResponseModel_AccessErrorCode_" in schemas
+        assert "Response_ValidationPayload_" in schemas
+
+        forbidden = responses[str(int(HTTPStatus.FORBIDDEN))]
+        assert forbidden["content"]["application/json"]["schema"] == {
+            "$ref": "#/components/schemas/ErrorResponseModel_AccessErrorCode_"
+        }
+        assert forbidden["description"] == "You don't have permission to perform this action"
+
 
 class TestHTTPExceptionHandler:
     """Tests for HTTPException handling."""
@@ -245,7 +392,19 @@ class TestHTTPExceptionHandler:
         response = await self.client.get("/http-exception")
 
         assert response.status_code == HTTPStatus.UNAUTHORIZED
-        assert response.json() == {"success": False, "error": "Not authenticated"}
+        assert response.json() == {"success": False, "error": "Not authenticated", "code": "unauthorized"}
+
+    async def test_http_exception_unusual_status(self) -> None:
+        """Test that an unusual status still derives its own code."""
+
+        response = await self.client.get("/http-exception-unusual-status")
+
+        assert response.status_code == HTTPStatus.IM_A_TEAPOT
+        assert response.json() == {
+            "success": False,
+            "error": "I'm a teapot",
+            "code": "im_a_teapot",
+        }
 
 
 class TestValueErrorHandler:
@@ -259,7 +418,11 @@ class TestValueErrorHandler:
         response = await self.client.get("/value-error")
 
         assert response.status_code == HTTPStatus.BAD_REQUEST
-        assert response.json() == {"success": False, "error": "Invalid value provided"}
+        assert response.json() == {
+            "success": False,
+            "error": "Invalid value provided",
+            "code": "invalid_value",
+        }
 
 
 class TestGeneralExceptionHandler:
@@ -274,7 +437,11 @@ class TestGeneralExceptionHandler:
             response = await self.client.get("/general-exception")
 
             assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
-            assert response.json() == {"success": False, "error": "An unexpected error occurred"}
+            assert response.json() == {
+                "success": False,
+                "error": "An unexpected error occurred",
+                "code": "internal_server_error",
+            }
         except RuntimeError as e:
             # In test mode, FastAPI may re-raise the exception
             assert str(e) == "Something went wrong"

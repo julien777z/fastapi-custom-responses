@@ -7,7 +7,14 @@ from fastapi import FastAPI, HTTPException
 from httpx import ASGITransport, AsyncClient
 from pydantic import BaseModel, Field, field_validator
 
-from fastapi_custom_responses import EXCEPTION_HANDLERS, ErrorResponse
+from fastapi_custom_responses import EXCEPTION_HANDLERS, ErrorCode, ErrorResponse
+
+
+class AccessErrorCode(ErrorCode):
+    """Error codes for access failures, used to exercise consumer-defined codes."""
+
+    PERMISSION_DENIED = "permission_denied"
+    ACCOUNT_SUSPENDED = "account_suspended"
 
 
 class ValidationPayload(BaseModel):
@@ -80,7 +87,9 @@ def create_test_app() -> FastAPI:
     @app.get("/error-response-with-code")
     async def error_response_with_code_endpoint() -> dict:
         raise ErrorResponse(
-            error="Custom error message", status_code=HTTPStatus.FORBIDDEN, code="permission_denied"
+            error="Custom error message",
+            status_code=HTTPStatus.FORBIDDEN,
+            code=AccessErrorCode.PERMISSION_DENIED,
         )
 
     @app.get("/error-response-from-status")
@@ -89,11 +98,15 @@ def create_test_app() -> FastAPI:
 
     @app.get("/error-response-from-status-with-code")
     async def error_response_from_status_with_code_endpoint() -> dict:
-        raise ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN, code="permission_denied")
+        raise ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN, code=AccessErrorCode.PERMISSION_DENIED)
 
     @app.get("/http-exception")
     async def http_exception_endpoint() -> dict:
         raise HTTPException(status_code=HTTPStatus.UNAUTHORIZED, detail="Not authenticated")
+
+    @app.get("/http-exception-unusual-status")
+    async def http_exception_unusual_status_endpoint() -> dict:
+        raise HTTPException(status_code=HTTPStatus.IM_A_TEAPOT, detail="I'm a teapot")
 
     @app.get("/value-error")
     async def value_error_endpoint() -> dict:
