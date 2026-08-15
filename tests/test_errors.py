@@ -20,7 +20,6 @@ class TestValidationErrors:
 
     client: AsyncClient
 
-    @pytest.mark.asyncio
     async def test_validation_error_missing_field(self) -> None:
         """Test that POST with missing required field returns 400 with human-readable message."""
 
@@ -29,7 +28,6 @@ class TestValidationErrors:
         assert response.status_code == HTTPStatus.BAD_REQUEST
         assert response.json() == {"success": False, "error": "Field 'email' is required"}
 
-    @pytest.mark.asyncio
     async def test_validation_error_wrong_type(self) -> None:
         """Test that POST with wrong type returns 400 with human-readable message."""
 
@@ -43,7 +41,6 @@ class TestValidationErrors:
         assert "age" in data["error"]
         assert "integer" in data["error"]
 
-    @pytest.mark.asyncio
     async def test_validation_error_multiple_errors(self) -> None:
         """Test that POST with multiple errors returns combined message."""
 
@@ -54,7 +51,6 @@ class TestValidationErrors:
         assert data["success"] is False
         assert "age" in data["error"] or "email" in data["error"]
 
-    @pytest.mark.asyncio
     async def test_validation_error_invalid_json(self) -> None:
         """Test that POST with invalid JSON returns 400."""
 
@@ -66,7 +62,6 @@ class TestValidationErrors:
         data = response.json()
         assert data["success"] is False
 
-    @pytest.mark.asyncio
     async def test_valid_request_succeeds(self) -> None:
         """Test that valid request succeeds."""
 
@@ -84,7 +79,6 @@ class TestConstrainedValidationErrors:
 
     client: AsyncClient
 
-    @pytest.mark.asyncio
     @pytest.mark.parametrize(
         ("payload_override", "expected_error"),
         [
@@ -118,7 +112,6 @@ class TestConstrainedValidationErrors:
         data = response.json()
         assert data["error"] == expected_error
 
-    @pytest.mark.asyncio
     async def test_enum_includes_expected_values(self) -> None:
         """Test that enum error includes the allowed values."""
 
@@ -130,7 +123,6 @@ class TestConstrainedValidationErrors:
         assert "color" in data["error"]
         assert "must be one of" in data["error"]
 
-    @pytest.mark.asyncio
     async def test_value_error_strips_pydantic_prefix(self) -> None:
         """Test that value_error strips the 'Value error, ' prefix Pydantic adds."""
 
@@ -140,7 +132,6 @@ class TestConstrainedValidationErrors:
         data = response.json()
         assert data["error"] == "Code must be exactly 4 digits"
 
-    @pytest.mark.asyncio
     async def test_valid_constrained_request_succeeds(self) -> None:
         """Test that a valid request with all constraints met succeeds."""
 
@@ -156,7 +147,6 @@ class TestErrorResponse:
 
     client: AsyncClient
 
-    @pytest.mark.asyncio
     async def test_error_response_custom_message(self) -> None:
         """Test that raising ErrorResponse returns custom message."""
 
@@ -165,7 +155,6 @@ class TestErrorResponse:
         assert response.status_code == HTTPStatus.BAD_REQUEST
         assert response.json() == {"success": False, "error": "Custom error message"}
 
-    @pytest.mark.asyncio
     async def test_error_response_custom_status_code(self) -> None:
         """Test that ErrorResponse can use different status codes."""
 
@@ -174,7 +163,6 @@ class TestErrorResponse:
         assert response.status_code == HTTPStatus.NOT_FOUND
         assert response.json() == {"success": False, "error": "Item not found"}
 
-    @pytest.mark.asyncio
     async def test_error_response_from_status_code(self) -> None:
         """Test that ErrorResponse.from_status_code() uses predefined messages."""
 
@@ -186,7 +174,6 @@ class TestErrorResponse:
             "error": "You don't have permission to perform this action",
         }
 
-    @pytest.mark.asyncio
     async def test_error_response_with_code(self) -> None:
         """Test that ErrorResponse with a code emits that code in the envelope."""
 
@@ -199,7 +186,6 @@ class TestErrorResponse:
             "code": "permission_denied",
         }
 
-    @pytest.mark.asyncio
     async def test_error_response_from_status_code_with_code(self) -> None:
         """Test that from_status_code() forwards the code into the envelope."""
 
@@ -220,6 +206,7 @@ class TestErrorResponseCode:
         """Test that code is keyword-only and cannot bind as a third positional argument."""
 
         with pytest.raises(TypeError):
+            # pylint: disable-next=too-many-function-args
             ErrorResponse("boom", HTTPStatus.FORBIDDEN, "some_code")
 
 
@@ -252,7 +239,6 @@ class TestHTTPExceptionHandler:
 
     client: AsyncClient
 
-    @pytest.mark.asyncio
     async def test_http_exception_handler(self) -> None:
         """Test that HTTPException is formatted correctly."""
 
@@ -267,7 +253,6 @@ class TestValueErrorHandler:
 
     client: AsyncClient
 
-    @pytest.mark.asyncio
     async def test_value_error_handler(self) -> None:
         """Test that ValueError returns str(exc)."""
 
@@ -282,7 +267,6 @@ class TestGeneralExceptionHandler:
 
     client: AsyncClient
 
-    @pytest.mark.asyncio
     async def test_general_exception_handler(self) -> None:
         """Test that unhandled exceptions return generic 500 message."""
 
