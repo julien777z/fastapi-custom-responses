@@ -49,12 +49,6 @@ class DefaultErrorCode(ErrorCode):
     INVALID_VALUE = "invalid_value"
 
 
-def status_error_code(status_code: int) -> str | None:
-    """Return the code naming an error status, or None for a non-standard one."""
-
-    return STATUS_ERROR_CODES.get(status_code)
-
-
 class ErrorResponseModel[CodeT: str](BaseModel):
     """Error response schema for use in FastAPI's `responses` parameter."""
 
@@ -77,7 +71,7 @@ class ErrorResponse(Exception):
 
         self.error = error
         self.status_code = status_code
-        self.code = code or status_error_code(status_code)
+        self.code = code or STATUS_ERROR_CODES.get(status_code)
 
         super().__init__(error)
 
@@ -252,7 +246,7 @@ def general_exception_handler(_: Request, exc: Exception) -> JSONResponse:
     return error_json_response(
         HTTPStatus.INTERNAL_SERVER_ERROR,
         ERROR_MESSAGES[HTTPStatus.INTERNAL_SERVER_ERROR],
-        status_error_code(HTTPStatus.INTERNAL_SERVER_ERROR),
+        STATUS_ERROR_CODES[HTTPStatus.INTERNAL_SERVER_ERROR],
     )
 
 
@@ -261,33 +255,31 @@ def http_exception_handler(_: Request, exc: HTTPException) -> JSONResponse:
 
     error_message = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
 
-    return error_json_response(exc.status_code, error_message, status_error_code(exc.status_code))
+    return error_json_response(exc.status_code, error_message, STATUS_ERROR_CODES.get(exc.status_code))
 
 
 type ResponseSpec = type[ErrorCode] | type[BaseModel] | None
 
 
+def response_entry(status_code: HTTPStatus, spec: ResponseSpec) -> dict[str, Any]:
+    """Build one FastAPI response entry from a status code and its model or error codes."""
+
+    if spec is not None and issubclass(spec, BaseModel):
+        return {"model": spec}
+
+    entry: dict[str, Any] = {"model": ErrorResponseModel[spec] if spec is not None else ErrorResponseModel}
+
+    message = ERROR_MESSAGES.get(status_code)
+    if message is not None:
+        entry["description"] = message
+
+    return entry
+
+
 def fastapi_responses(models: dict[HTTPStatus, ResponseSpec]) -> dict[int | str, dict[str, Any]]:
     """Build FastAPI's `responses` mapping from status codes and their models or error codes."""
 
-    responses: dict[int | str, dict[str, Any]] = {}
-
-    for status_code, spec in models.items():
-        if isinstance(spec, type) and issubclass(spec, BaseModel):
-            responses[status_code] = {"model": spec}
-
-            continue
-
-        model = ErrorResponseModel[spec] if spec is not None else ErrorResponseModel
-        entry: dict[str, Any] = {"model": model}
-
-        message = ERROR_MESSAGES.get(status_code)
-        if message is not None:
-            entry["description"] = message
-
-        responses[status_code] = entry
-
-    return responses
+    return {status_code: response_entry(status_code, spec) for status_code, spec in models.items()}
 
 
 EXCEPTION_HANDLERS: dict[type[Exception], Callable[[Request, Exception], JSONResponse]] = {

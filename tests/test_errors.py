@@ -16,7 +16,6 @@ from fastapi_custom_responses.errors import (
     STATUS_ERROR_CODES,
     format_field_location,
     format_single_error,
-    status_error_code,
 )
 from tests.conftest import AccessErrorCode, ValidationPayload
 
@@ -275,7 +274,7 @@ class TestErrorResponseModel:
         assert schema["$defs"]["AccessErrorCode"]["enum"] == ["permission_denied", "account_suspended"]
 
 
-class TestStatusErrorCode:
+class TestStatusErrorCodes:
     """Tests for codes derived from HTTP statuses."""
 
     @pytest.mark.parametrize(
@@ -293,17 +292,17 @@ class TestStatusErrorCode:
     def test_derives_code_from_status(self, status_code: HTTPStatus, expected_code: str) -> None:
         """Test that an error status derives its code from the status name."""
 
-        assert status_error_code(status_code) == expected_code
+        assert STATUS_ERROR_CODES.get(status_code) == expected_code
 
     def test_non_standard_status_has_no_code(self) -> None:
         """Test that a status outside HTTPStatus derives no code."""
 
-        assert status_error_code(499) is None
+        assert STATUS_ERROR_CODES.get(499) is None
 
     def test_success_statuses_have_no_code(self) -> None:
         """Test that only error statuses derive codes."""
 
-        assert status_error_code(HTTPStatus.OK) is None
+        assert STATUS_ERROR_CODES.get(HTTPStatus.OK) is None
         assert all(status >= HTTPStatus.BAD_REQUEST for status in STATUS_ERROR_CODES)
 
 
