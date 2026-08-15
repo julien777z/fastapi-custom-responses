@@ -2,6 +2,15 @@
 
 Provides normalized response objects and error handling for FastAPI applications. All errors — validation, HTTP, and unhandled exceptions — are returned in a consistent `{ "success": false, "error": "..." }` format with human-readable messages.
 
+## Features
+
+- One error envelope for every failure: validation, `HTTPException`, `ValueError`, and unhandled exceptions.
+- Pydantic validation errors rewritten as human-readable messages instead of raw error arrays.
+- Optional machine-readable `code` for clients that branch on a stable identifier.
+- Generic `Response[T]`, `SuccessResponse`, and `PaginatedResponse[T]` envelopes for success payloads.
+- `ErrorResponseModel` for documenting error responses in OpenAPI.
+- Default messages for common status codes via `ErrorResponse.from_status_code`.
+
 ## Installation
 
 ```bash
@@ -14,6 +23,7 @@ pip install fastapi-custom-responses
 from http import HTTPStatus
 from fastapi_custom_responses import EXCEPTION_HANDLERS, ErrorResponse, ErrorResponseModel, Response, SuccessResponse
 from fastapi import APIRouter, FastAPI, Request
+from pydantic import BaseModel
 
 router = APIRouter()
 
@@ -24,7 +34,7 @@ app = FastAPI(
     exception_handlers=EXCEPTION_HANDLERS,
 )
 
-class Data(Response):
+class Data(BaseModel):
     example: str
 
 @router.get(
@@ -179,3 +189,25 @@ Supported Pydantic error types and their human-readable formats:
 | `json_invalid` | `Invalid JSON in request body` |
 
 Any unrecognized error types fall back to the Pydantic error message prefixed with the field name.
+
+## Local Development
+
+Install the project with its development dependencies:
+
+```bash
+poetry install -E dev
+```
+
+Run the test suite:
+
+```bash
+poetry run pytest tests/ -v
+```
+
+Format and lint:
+
+```bash
+poetry run black .
+poetry run isort .
+poetry run pylint fastapi_custom_responses/
+```
