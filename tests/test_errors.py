@@ -27,10 +27,7 @@ class TestValidationErrors:
         response = await self.client.post("/validate", json={"name": "John", "age": 30})
 
         assert response.status_code == HTTPStatus.BAD_REQUEST
-        data = response.json()
-        assert data["success"] is False
-        assert "email" in data["error"]
-        assert "required" in data["error"]
+        assert response.json() == {"success": False, "error": "Field 'email' is required"}
 
     @pytest.mark.asyncio
     async def test_validation_error_wrong_type(self) -> None:
@@ -166,9 +163,7 @@ class TestErrorResponse:
         response = await self.client.get("/error-response")
 
         assert response.status_code == HTTPStatus.BAD_REQUEST
-        data = response.json()
-        assert data["success"] is False
-        assert data["error"] == "Custom error message"
+        assert response.json() == {"success": False, "error": "Custom error message"}
 
     @pytest.mark.asyncio
     async def test_error_response_custom_status_code(self) -> None:
@@ -177,9 +172,7 @@ class TestErrorResponse:
         response = await self.client.get("/error-response-not-found")
 
         assert response.status_code == HTTPStatus.NOT_FOUND
-        data = response.json()
-        assert data["success"] is False
-        assert data["error"] == "Item not found"
+        assert response.json() == {"success": False, "error": "Item not found"}
 
     @pytest.mark.asyncio
     async def test_error_response_from_status_code(self) -> None:
@@ -188,21 +181,13 @@ class TestErrorResponse:
         response = await self.client.get("/error-response-from-status")
 
         assert response.status_code == HTTPStatus.FORBIDDEN
-        data = response.json()
-        assert data["success"] is False
-        assert data["error"] == "You don't have permission to perform this action"
+        assert response.json() == {
+            "success": False,
+            "error": "You don't have permission to perform this action",
+        }
 
     @pytest.mark.asyncio
-    async def test_error_response_body_without_code(self) -> None:
-        """Test that ErrorResponse without a code emits an envelope carrying no code field."""
-
-        response = await self.client.get("/error-response")
-
-        assert response.status_code == HTTPStatus.BAD_REQUEST
-        assert response.json() == {"success": False, "error": "Custom error message"}
-
-    @pytest.mark.asyncio
-    async def test_error_response_body_with_code(self) -> None:
+    async def test_error_response_with_code(self) -> None:
         """Test that ErrorResponse with a code emits that code in the envelope."""
 
         response = await self.client.get("/error-response-with-code")
@@ -237,40 +222,21 @@ class TestErrorResponseCode:
         with pytest.raises(TypeError):
             ErrorResponse("boom", HTTPStatus.FORBIDDEN, "some_code")
 
-    def test_code_defaults_to_none(self) -> None:
-        """Test that ErrorResponse stores None when no code is supplied."""
-
-        assert ErrorResponse("boom").code is None
-
-    def test_from_status_code_stores_code(self) -> None:
-        """Test that from_status_code() stores the supplied code."""
-
-        error = ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN, code="permission_denied")
-
-        assert error.code == "permission_denied"
-
-    def test_from_status_code_defaults_to_none(self) -> None:
-        """Test that from_status_code() stores None when no code is supplied."""
-
-        assert ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN).code is None
-
 
 class TestErrorResponseModel:
     """Tests for the documented error response schema."""
 
-    def test_validates_with_code(self) -> None:
-        """Test that ErrorResponseModel accepts a code."""
+    @pytest.mark.parametrize(
+        ("code_field", "expected_code"),
+        [({"code": "permission_denied"}, "permission_denied"), ({}, None)],
+        ids=["with_code", "without_code"],
+    )
+    def test_validates_code(self, code_field: dict, expected_code: str | None) -> None:
+        """Test that ErrorResponseModel accepts a code and defaults it to None when absent."""
 
-        model = ErrorResponseModel(success=False, error="Denied", code="permission_denied")
+        model = ErrorResponseModel(success=False, error="Denied", **code_field)
 
-        assert model.code == "permission_denied"
-
-    def test_validates_without_code(self) -> None:
-        """Test that ErrorResponseModel defaults code to None when it is absent."""
-
-        model = ErrorResponseModel(success=False, error="Denied")
-
-        assert model.code is None
+        assert model.code == expected_code
 
     def test_json_schema_exposes_code_as_optional(self) -> None:
         """Test that the generated JSON schema lists code as an optional property."""
@@ -279,61 +245,6 @@ class TestErrorResponseModel:
 
         assert "code" in schema["properties"]
         assert "code" not in schema["required"]
-
-
-class TestErrorEnvelopeShape:
-    """Tests that handlers which supply no code emit an envelope without one."""
-
-    client: AsyncClient
-
-    @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        ("path", "expected_status", "expected_body"),
-        [
-            (
-                "/http-exception",
-                HTTPStatus.UNAUTHORIZED,
-                {"success": False, "error": "Not authenticated"},
-            ),
-            (
-                "/value-error",
-                HTTPStatus.BAD_REQUEST,
-                {"success": False, "error": "Invalid value provided"},
-            ),
-        ],
-        ids=["http_exception", "value_error"],
-    )
-    async def test_handler_emits_no_code(
-        self, path: str, expected_status: HTTPStatus, expected_body: dict
-    ) -> None:
-        """Test that the HTTP exception and value error handlers emit no code."""
-
-        response = await self.client.get(path)
-
-        assert response.status_code == expected_status
-        assert response.json() == expected_body
-
-    @pytest.mark.asyncio
-    async def test_validation_handler_emits_no_code(self) -> None:
-        """Test that the validation handler emits no code."""
-
-        response = await self.client.post("/validate", json={"name": "John", "age": 30})
-
-        assert response.status_code == HTTPStatus.BAD_REQUEST
-        assert response.json() == {"success": False, "error": "Field 'email' is required"}
-
-    @pytest.mark.asyncio
-    async def test_general_exception_handler_emits_no_code(self) -> None:
-        """Test that the catch-all handler emits no code."""
-
-        try:
-            response = await self.client.get("/general-exception")
-
-            assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
-            assert response.json() == {"success": False, "error": "An unexpected error occurred"}
-        except RuntimeError as e:
-            # In test mode, FastAPI may re-raise the exception
-            assert str(e) == "Something went wrong"
 
 
 class TestHTTPExceptionHandler:
@@ -348,9 +259,7 @@ class TestHTTPExceptionHandler:
         response = await self.client.get("/http-exception")
 
         assert response.status_code == HTTPStatus.UNAUTHORIZED
-        data = response.json()
-        assert data["success"] is False
-        assert data["error"] == "Not authenticated"
+        assert response.json() == {"success": False, "error": "Not authenticated"}
 
 
 class TestValueErrorHandler:
@@ -365,9 +274,7 @@ class TestValueErrorHandler:
         response = await self.client.get("/value-error")
 
         assert response.status_code == HTTPStatus.BAD_REQUEST
-        data = response.json()
-        assert data["success"] is False
-        assert data["error"] == "Invalid value provided"
+        assert response.json() == {"success": False, "error": "Invalid value provided"}
 
 
 class TestGeneralExceptionHandler:
@@ -381,10 +288,9 @@ class TestGeneralExceptionHandler:
 
         try:
             response = await self.client.get("/general-exception")
+
             assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
-            data = response.json()
-            assert data["success"] is False
-            assert data["error"] == "An unexpected error occurred"
+            assert response.json() == {"success": False, "error": "An unexpected error occurred"}
         except RuntimeError as e:
             # In test mode, FastAPI may re-raise the exception
             assert str(e) == "Something went wrong"
