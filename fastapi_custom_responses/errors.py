@@ -1,7 +1,8 @@
 import logging
 from collections.abc import Callable
+from enum import StrEnum
 from http import HTTPStatus
-from typing import Final, Self
+from typing import Any, Final, Self
 
 from fastapi import HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -16,6 +17,10 @@ ERROR_MESSAGES: Final[dict[int, str]] = {
     HTTPStatus.NOT_FOUND: "Resource not found",
     HTTPStatus.BAD_REQUEST: "Invalid request",
     HTTPStatus.INTERNAL_SERVER_ERROR: "An unexpected error occurred",
+}
+
+STATUS_ERROR_CODES: Final[dict[int, str]] = {
+    status: status.name.lower() for status in HTTPStatus if status >= HTTPStatus.BAD_REQUEST
 }
 
 SIMPLE_TYPE_MESSAGES: Final[dict[str, str]] = {
@@ -33,12 +38,29 @@ SIMPLE_TYPE_MESSAGES: Final[dict[str, str]] = {
 }
 
 
-class ErrorResponseModel(BaseModel):
+class ErrorCode(StrEnum):
+    """Base class for stable error identifiers clients can branch on."""
+
+
+class DefaultErrorCode(ErrorCode):
+    """Codes for conditions the library detects that no HTTP status names."""
+
+    VALIDATION_ERROR = "validation_error"
+    INVALID_VALUE = "invalid_value"
+
+
+def status_error_code(status_code: int) -> str | None:
+    """Return the code naming an error status, or None for a non-standard one."""
+
+    return STATUS_ERROR_CODES.get(status_code)
+
+
+class ErrorResponseModel[CodeT: str](BaseModel):
     """Error response schema for use in FastAPI's `responses` parameter."""
 
     success: bool
     error: str
-    code: str | None = None
+    code: CodeT | None = None
 
 
 class ErrorResponse(Exception):
@@ -49,18 +71,18 @@ class ErrorResponse(Exception):
         error: str,
         status_code: int = HTTPStatus.BAD_REQUEST,
         *,
-        code: str | None = None,
+        code: ErrorCode | None = None,
     ) -> None:
-        """Initialize error response with message, status code, and machine-readable code."""
+        """Initialize error response with message, status code, and error code."""
 
         self.error = error
         self.status_code = status_code
-        self.code = code
+        self.code = code or status_error_code(status_code)
 
         super().__init__(error)
 
     @classmethod
-    def from_status_code(cls, status_code: int, *, code: str | None = None) -> Self:
+    def from_status_code(cls, status_code: int, *, code: ErrorCode | None = None) -> Self:
         """Create an error response from a status code."""
 
         return cls(
@@ -201,7 +223,9 @@ def validation_exception_handler(_: Request, exc: RequestValidationError) -> JSO
 
     logger.warning("Validation error: %s", exc.errors())
 
-    return error_json_response(HTTPStatus.BAD_REQUEST, format_validation_errors(exc))
+    return error_json_response(
+        HTTPStatus.BAD_REQUEST, format_validation_errors(exc), DefaultErrorCode.VALIDATION_ERROR
+    )
 
 
 def value_error_handler(_: Request, exc: ValueError) -> JSONResponse:
@@ -209,7 +233,7 @@ def value_error_handler(_: Request, exc: ValueError) -> JSONResponse:
 
     logger.exception(exc)
 
-    return error_json_response(HTTPStatus.BAD_REQUEST, str(exc))
+    return error_json_response(HTTPStatus.BAD_REQUEST, str(exc), DefaultErrorCode.INVALID_VALUE)
 
 
 def error_response_handler(_: Request, exc: ErrorResponse) -> JSONResponse:
@@ -226,7 +250,9 @@ def general_exception_handler(_: Request, exc: Exception) -> JSONResponse:
     logger.exception(exc)
 
     return error_json_response(
-        HTTPStatus.INTERNAL_SERVER_ERROR, ERROR_MESSAGES[HTTPStatus.INTERNAL_SERVER_ERROR]
+        HTTPStatus.INTERNAL_SERVER_ERROR,
+        ERROR_MESSAGES[HTTPStatus.INTERNAL_SERVER_ERROR],
+        status_error_code(HTTPStatus.INTERNAL_SERVER_ERROR),
     )
 
 
@@ -235,7 +261,33 @@ def http_exception_handler(_: Request, exc: HTTPException) -> JSONResponse:
 
     error_message = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
 
-    return error_json_response(exc.status_code, error_message)
+    return error_json_response(exc.status_code, error_message, status_error_code(exc.status_code))
+
+
+type ResponseSpec = type[ErrorCode] | type[BaseModel] | None
+
+
+def fastapi_responses(models: dict[HTTPStatus, ResponseSpec]) -> dict[int | str, dict[str, Any]]:
+    """Build FastAPI's `responses` mapping from status codes and their models or error codes."""
+
+    responses: dict[int | str, dict[str, Any]] = {}
+
+    for status_code, spec in models.items():
+        if isinstance(spec, type) and issubclass(spec, BaseModel):
+            responses[status_code] = {"model": spec}
+
+            continue
+
+        model = ErrorResponseModel[spec] if spec is not None else ErrorResponseModel
+        entry: dict[str, Any] = {"model": model}
+
+        message = ERROR_MESSAGES.get(status_code)
+        if message is not None:
+            entry["description"] = message
+
+        responses[status_code] = entry
+
+    return responses
 
 
 EXCEPTION_HANDLERS: dict[type[Exception], Callable[[Request, Exception], JSONResponse]] = {
