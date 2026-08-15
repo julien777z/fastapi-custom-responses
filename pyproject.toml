@@ -6,7 +6,8 @@ authors = [
     { name = "Julien Kmec", email = "me@julien.dev" },
 ]
 readme = "README.md"
-license = {file = "LICENSE"}
+license = "MIT"
+license-files = ["LICENSE"]
 homepage = "https://github.com/julien777z/fastapi-custom-responses"
 packages = [{include = "fastapi_custom_responses"}]
 requires-python = ">=3.12,<3.15"
