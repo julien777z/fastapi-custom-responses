@@ -7,7 +7,15 @@ from fastapi import FastAPI, HTTPException
 from httpx import ASGITransport, AsyncClient
 from pydantic import BaseModel, Field, field_validator
 
-from fastapi_custom_responses import EXCEPTION_HANDLERS, ErrorCode, ErrorResponse
+from fastapi_custom_responses import (
+    EXCEPTION_HANDLERS,
+    ErrorCode,
+    ErrorResponse,
+    PaginatedResponse,
+    PaginationMeta,
+    Response,
+    SuccessResponse,
+)
 
 
 class AccessErrorCode(ErrorCode):
@@ -23,6 +31,9 @@ class ValidationPayload(BaseModel):
     name: str
     age: int
     email: str
+
+
+SAMPLE_PAYLOAD = ValidationPayload(name="Alice", age=30, email="alice@example.com")
 
 
 class Color(str, Enum):
@@ -75,6 +86,22 @@ def create_test_app() -> FastAPI:
     @app.post("/validate-value-error")
     async def validate_value_error_endpoint(payload: ValueErrorPayload) -> dict:
         return {"success": True, "data": payload.model_dump()}
+
+    @app.get("/response-with-data", response_model=Response[ValidationPayload])
+    async def response_with_data_endpoint() -> Response[ValidationPayload]:
+        return Response(success=True, data=SAMPLE_PAYLOAD)
+
+    @app.get("/success-response", response_model=SuccessResponse)
+    async def success_response_endpoint() -> SuccessResponse:
+        return SuccessResponse(success=True)
+
+    @app.get("/paginated-response", response_model=PaginatedResponse[ValidationPayload])
+    async def paginated_response_endpoint() -> PaginatedResponse[ValidationPayload]:
+        return PaginatedResponse(
+            success=True,
+            data=[SAMPLE_PAYLOAD],
+            meta=PaginationMeta(offset=0, limit=10, total=1),
+        )
 
     @app.get("/error-response")
     async def error_response_endpoint() -> dict:
