@@ -8,22 +8,12 @@ authors = [
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
-homepage = "https://github.com/julien777z/fastapi-custom-responses"
-packages = [{include = "fastapi_custom_responses"}]
 requires-python = ">=3.12,<3.15"
 dependencies = [
     "pydantic>=2.13.4",
     "fastapi[standard]>=0.139.0",
     "pydantic-super-model>=2.0.0",
 ]
-
-[tool.black]
-line-length = 110
-target-version = ["py312"]
-
-[tool.isort]
-profile = "black"
-line_length = 110
 
 [project.optional-dependencies]
 dev = [
@@ -34,6 +24,20 @@ dev = [
     "pytest-asyncio (>=1.4.0)",
     "httpx (>=0.28.1)",
 ]
+
+[project.urls]
+Homepage = "https://github.com/julien777z/fastapi-custom-responses"
+
+[tool.poetry]
+packages = [{include = "fastapi_custom_responses"}]
+
+[tool.black]
+line-length = 110
+target-version = ["py312"]
+
+[tool.isort]
+profile = "black"
+line_length = 110
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

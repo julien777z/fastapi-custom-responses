@@ -103,8 +103,7 @@ Default messages for common status codes:
 
 ### Error Codes
 
-`error` is human-readable and may be reworded or localized. To let clients branch on a stable
-identifier, pass a `code`:
+`error` is human-readable and may be reworded or localized. To let clients branch on a stable identifier, pass a `code`:
 
 ```py
 raise ErrorResponse(
@@ -121,9 +120,7 @@ raise ErrorResponse(
 raise ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN, code="permission_denied")
 ```
 
-The field is optional and appears in the body only when supplied, so responses that carry no code keep
-the `{ "success": false, "error": "..." }` shape. `ErrorResponseModel` documents `code` as optional, so
-endpoints already using it in `responses=` pick the field up in their OpenAPI schema.
+The field is optional and appears only when supplied. `ErrorResponseModel` documents it as optional, so endpoints using that model in `responses=` pick it up in their OpenAPI schema.
 
 ### Validation Error Normalization
 
