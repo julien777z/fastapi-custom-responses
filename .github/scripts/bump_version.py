@@ -4,10 +4,12 @@ import subprocess
 from pathlib import Path
 
 
-def read_project_version() -> str:
-    """Read the project's current version from Poetry."""
+def poetry_version(*arguments: str) -> str:
+    """Run `poetry version`, returning the version it reports."""
 
-    completed = subprocess.run(["poetry", "version", "--short"], capture_output=True, check=True, text=True)
+    completed = subprocess.run(
+        ["poetry", "version", "--short", *arguments], capture_output=True, check=True, text=True
+    )
 
     return completed.stdout.strip()
 
@@ -19,11 +21,8 @@ def main() -> None:
     parser.add_argument("increment", choices=("patch", "minor", "major"))
     arguments = parser.parse_args()
 
-    current_version = read_project_version()
-
-    subprocess.run(["poetry", "version", arguments.increment], check=True)
-
-    new_version = read_project_version()
+    current_version = poetry_version()
+    new_version = poetry_version(arguments.increment)
 
     with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
         output.write(f"current={current_version}\nnew={new_version}\n")

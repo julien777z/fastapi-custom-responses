@@ -21,8 +21,7 @@ def main() -> None:
     git("commit", "-am", f"chore(release): bump version to {arguments.version}")
     git("tag", arguments.version)
 
-    git("push", "origin", "HEAD")
-    git("push", "origin", "--tags")
+    git("push", "--atomic", "origin", "HEAD", f"refs/tags/{arguments.version}")
 
 
 if __name__ == "__main__":
