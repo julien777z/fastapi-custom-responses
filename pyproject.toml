@@ -39,9 +39,12 @@ target-version = ["py312"]
 profile = "black"
 line_length = 110
 
+[tool.pylint.format]
+max-line-length = 110
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 
 [build-system]
-requires = ["poetry-core", "setuptools"]
+requires = ["poetry-core>=2.0.0"]
 build-backend = "poetry.core.masonry.api"
