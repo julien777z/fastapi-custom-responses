@@ -1088,10 +1088,7 @@ files = [
 [package.dependencies]
 astroid = ">=4.0.2,<=4.1.dev0"
 colorama = {version = ">=0.4.5", markers = "sys_platform == \"win32\""}
-dill = [
-    {version = ">=0.3.7", markers = "python_version >= \"3.12\""},
-    {version = ">=0.3.6", markers = "python_version == \"3.11\""},
-]
+dill = {version = ">=0.3.7", markers = "python_version >= \"3.12\""}
 isort = ">=5,<5.13 || >5.13,<9"
 mccabe = ">=0.6,<0.8"
 platformdirs = ">=2.2"
@@ -1999,5 +1996,5 @@ dev = ["black", "httpx", "isort", "pylint", "pytest", "pytest-asyncio"]
 
 [metadata]
 lock-version = "2.1"
-python-versions = ">=3.11,<3.15"
-content-hash = "c38a542e9048c83d8fd726839461be3dc77b00991b75534e88377c0446fe03a6"
+python-versions = ">=3.12,<3.15"
+content-hash = "aaffba2c1965f84b802f71a19344fedf2c8e2a5541853d2c10577b45466b53c9"
