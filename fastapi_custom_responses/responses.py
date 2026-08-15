@@ -5,15 +5,13 @@ class SuccessResponse(SuperModelPydanticMixin):
     """Success response without data."""
 
     success: bool
-    error: str | None = None
 
 
 class Response[T](SuperModelPydanticMixin):
-    """Response model."""
+    """Success response carrying a data payload."""
 
     success: bool
     data: T | None = None
-    error: str | None = None
 
 
 class PaginationMeta(SuperModelPydanticMixin):
