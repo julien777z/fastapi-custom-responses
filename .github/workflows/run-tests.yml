@@ -8,6 +8,9 @@ on:
       - "fastapi_custom_responses/**"
       - "tests/**"
       - "pyproject.toml"
+      - "poetry.lock"
+      - ".python-version"
+      - ".github/actions/setup-python-poetry/action.yml"
       - ".github/workflows/run-tests.yml"
 
 jobs:
@@ -20,8 +23,9 @@ jobs:
 
       - name: Setup Python and Poetry
         uses: ./.github/actions/setup-python-poetry
-        with:
-          post_setup_command: "poetry install -E dev"
+
+      - name: Install dependencies
+        run: poetry install -E dev
 
       - name: Run Tests
         run: poetry run pytest tests/ -v
