@@ -8,8 +8,6 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from fastapi_custom_responses.responses import Response
-
 logger = logging.getLogger(__name__)
 
 ERROR_MESSAGES: Final[dict[int, str]] = {
@@ -40,26 +38,35 @@ class ErrorResponseModel(BaseModel):
 
     success: bool
     error: str
+    code: str | None = None
 
 
 class ErrorResponse(Exception):
     """Standard error response that includes error message."""
 
-    def __init__(self, error: str, status_code: int = HTTPStatus.BAD_REQUEST) -> None:
-        """Initialize error response with message and status code."""
+    def __init__(
+        self,
+        error: str,
+        status_code: int = HTTPStatus.BAD_REQUEST,
+        *,
+        code: str | None = None,
+    ) -> None:
+        """Initialize error response with message, status code, and machine-readable code."""
 
         self.error = error
         self.status_code = status_code
+        self.code = code
 
         super().__init__(error)
 
     @classmethod
-    def from_status_code(cls, status_code: int) -> Self:
+    def from_status_code(cls, status_code: int, *, code: str | None = None) -> Self:
         """Create an error response from a status code."""
 
         return cls(
             error=ERROR_MESSAGES.get(status_code, ERROR_MESSAGES[HTTPStatus.INTERNAL_SERVER_ERROR]),
             status_code=status_code,
+            code=code,
         )
 
 
@@ -182,12 +189,13 @@ def format_validation_errors(exc: RequestValidationError) -> str:
     return ". ".join(format_single_error(error) for error in errors)
 
 
-def error_json_response(status_code: int, error: str) -> JSONResponse:
+def error_json_response(status_code: int, error: str, code: str | None = None) -> JSONResponse:
     """Build the standard `{success: false, error: ...}` JSON response."""
 
-    response = Response(success=False, error=error)
+    response = ErrorResponseModel(success=False, error=error, code=code)
+    content = response.model_dump(mode="json", exclude_none=True)
 
-    return JSONResponse(status_code=status_code, content=response.model_dump(mode="json"))
+    return JSONResponse(status_code=status_code, content=content)
 
 
 def validation_exception_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
@@ -211,7 +219,7 @@ def error_response_handler(_: Request, exc: ErrorResponse) -> JSONResponse:
 
     logger.info("ErrorResponse: %s - %s", exc.status_code, exc.error)
 
-    return error_json_response(exc.status_code, exc.error)
+    return error_json_response(exc.status_code, exc.error, exc.code)
 
 
 def general_exception_handler(_: Request, exc: Exception) -> JSONResponse:

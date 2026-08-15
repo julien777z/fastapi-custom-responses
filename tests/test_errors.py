@@ -3,6 +3,7 @@ from http import HTTPStatus
 import pytest
 from httpx import AsyncClient
 
+from fastapi_custom_responses import ErrorResponse, ErrorResponseModel
 from fastapi_custom_responses.errors import format_field_location, format_single_error
 
 VALID_CONSTRAINED_PAYLOAD: dict = {
@@ -190,6 +191,149 @@ class TestErrorResponse:
         data = response.json()
         assert data["success"] is False
         assert data["error"] == "You don't have permission to perform this action"
+
+    @pytest.mark.asyncio
+    async def test_error_response_body_without_code(self) -> None:
+        """Test that ErrorResponse without a code emits an envelope carrying no code field."""
+
+        response = await self.client.get("/error-response")
+
+        assert response.status_code == HTTPStatus.BAD_REQUEST
+        assert response.json() == {"success": False, "error": "Custom error message"}
+
+    @pytest.mark.asyncio
+    async def test_error_response_body_with_code(self) -> None:
+        """Test that ErrorResponse with a code emits that code in the envelope."""
+
+        response = await self.client.get("/error-response-with-code")
+
+        assert response.status_code == HTTPStatus.FORBIDDEN
+        assert response.json() == {
+            "success": False,
+            "error": "Custom error message",
+            "code": "permission_denied",
+        }
+
+    @pytest.mark.asyncio
+    async def test_error_response_from_status_code_with_code(self) -> None:
+        """Test that from_status_code() forwards the code into the envelope."""
+
+        response = await self.client.get("/error-response-from-status-with-code")
+
+        assert response.status_code == HTTPStatus.FORBIDDEN
+        assert response.json() == {
+            "success": False,
+            "error": "You don't have permission to perform this action",
+            "code": "permission_denied",
+        }
+
+
+class TestErrorResponseCode:
+    """Tests for the machine-readable code carried by ErrorResponse."""
+
+    def test_code_cannot_be_passed_positionally(self) -> None:
+        """Test that code is keyword-only and cannot bind as a third positional argument."""
+
+        with pytest.raises(TypeError):
+            ErrorResponse("boom", HTTPStatus.FORBIDDEN, "some_code")
+
+    def test_code_defaults_to_none(self) -> None:
+        """Test that ErrorResponse stores None when no code is supplied."""
+
+        assert ErrorResponse("boom").code is None
+
+    def test_from_status_code_stores_code(self) -> None:
+        """Test that from_status_code() stores the supplied code."""
+
+        error = ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN, code="permission_denied")
+
+        assert error.code == "permission_denied"
+
+    def test_from_status_code_defaults_to_none(self) -> None:
+        """Test that from_status_code() stores None when no code is supplied."""
+
+        assert ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN).code is None
+
+
+class TestErrorResponseModel:
+    """Tests for the documented error response schema."""
+
+    def test_validates_with_code(self) -> None:
+        """Test that ErrorResponseModel accepts a code."""
+
+        model = ErrorResponseModel(success=False, error="Denied", code="permission_denied")
+
+        assert model.code == "permission_denied"
+
+    def test_validates_without_code(self) -> None:
+        """Test that ErrorResponseModel defaults code to None when it is absent."""
+
+        model = ErrorResponseModel(success=False, error="Denied")
+
+        assert model.code is None
+
+    def test_json_schema_exposes_code_as_optional(self) -> None:
+        """Test that the generated JSON schema lists code as an optional property."""
+
+        schema = ErrorResponseModel.model_json_schema()
+
+        assert "code" in schema["properties"]
+        assert "code" not in schema["required"]
+
+
+class TestErrorEnvelopeShape:
+    """Tests that handlers which supply no code emit an envelope without one."""
+
+    client: AsyncClient
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("path", "expected_status", "expected_body"),
+        [
+            (
+                "/http-exception",
+                HTTPStatus.UNAUTHORIZED,
+                {"success": False, "error": "Not authenticated"},
+            ),
+            (
+                "/value-error",
+                HTTPStatus.BAD_REQUEST,
+                {"success": False, "error": "Invalid value provided"},
+            ),
+        ],
+        ids=["http_exception", "value_error"],
+    )
+    async def test_handler_emits_no_code(
+        self, path: str, expected_status: HTTPStatus, expected_body: dict
+    ) -> None:
+        """Test that the HTTP exception and value error handlers emit no code."""
+
+        response = await self.client.get(path)
+
+        assert response.status_code == expected_status
+        assert response.json() == expected_body
+
+    @pytest.mark.asyncio
+    async def test_validation_handler_emits_no_code(self) -> None:
+        """Test that the validation handler emits no code."""
+
+        response = await self.client.post("/validate", json={"name": "John", "age": 30})
+
+        assert response.status_code == HTTPStatus.BAD_REQUEST
+        assert response.json() == {"success": False, "error": "Field 'email' is required"}
+
+    @pytest.mark.asyncio
+    async def test_general_exception_handler_emits_no_code(self) -> None:
+        """Test that the catch-all handler emits no code."""
+
+        try:
+            response = await self.client.get("/general-exception")
+
+            assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
+            assert response.json() == {"success": False, "error": "An unexpected error occurred"}
+        except RuntimeError as e:
+            # In test mode, FastAPI may re-raise the exception
+            assert str(e) == "Something went wrong"
 
 
 class TestHTTPExceptionHandler:

@@ -101,6 +101,30 @@ Default messages for common status codes:
 | `400` | `"Invalid request"` |
 | `500` | `"An unexpected error occurred"` |
 
+### Error Codes
+
+`error` is human-readable and may be reworded or localized. To let clients branch on a stable
+identifier, pass a `code`:
+
+```py
+raise ErrorResponse(
+    error="You don't have permission to perform this action",
+    status_code=HTTPStatus.FORBIDDEN,
+    code="permission_denied",
+)
+# → { "success": false, "error": "You don't have permission to perform this action", "code": "permission_denied" }
+```
+
+`code` is keyword-only and also accepted by `from_status_code`:
+
+```py
+raise ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN, code="permission_denied")
+```
+
+The field is optional and appears in the body only when supplied, so responses that carry no code keep
+the `{ "success": false, "error": "..." }` shape. `ErrorResponseModel` documents `code` as optional, so
+endpoints already using it in `responses=` pick the field up in their OpenAPI schema.
+
 ### Validation Error Normalization
 
 When a request fails Pydantic validation, FastAPI normally returns a verbose JSON array of raw Pydantic errors. With `EXCEPTION_HANDLERS`, these are automatically converted into concise, human-readable messages.

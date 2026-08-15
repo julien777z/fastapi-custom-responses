@@ -77,9 +77,19 @@ def create_test_app() -> FastAPI:
     async def error_response_not_found_endpoint() -> dict:
         raise ErrorResponse(error="Item not found", status_code=HTTPStatus.NOT_FOUND)
 
+    @app.get("/error-response-with-code")
+    async def error_response_with_code_endpoint() -> dict:
+        raise ErrorResponse(
+            error="Custom error message", status_code=HTTPStatus.FORBIDDEN, code="permission_denied"
+        )
+
     @app.get("/error-response-from-status")
     async def error_response_from_status_endpoint() -> dict:
         raise ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN)
+
+    @app.get("/error-response-from-status-with-code")
+    async def error_response_from_status_with_code_endpoint() -> dict:
+        raise ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN, code="permission_denied")
 
     @app.get("/http-exception")
     async def http_exception_endpoint() -> dict:
