@@ -34,7 +34,7 @@ SIMPLE_TYPE_MESSAGES: Final[dict[str, str]] = {
 
 
 class ErrorResponseModel(BaseModel):
-    """Pydantic model for error response schema. Use this in FastAPI's `responses` parameter to document the error response schema."""
+    """Error response schema for use in FastAPI's `responses` parameter."""
 
     success: bool
     error: str
@@ -129,6 +129,9 @@ CONSTRAINT_RULES: Final[dict[str, ConstraintRule]] = {
     "less_than_equal": ConstraintRule(
         ctx_key="le", template="must be at most {value}", fallback="has an invalid value"
     ),
+    "enum": ConstraintRule(
+        ctx_key="expected", template="must be one of: {value}", fallback="has an invalid value"
+    ),
 }
 
 
@@ -136,7 +139,7 @@ def format_constraint_error(field: str, ctx: dict, rule: ConstraintRule) -> str:
     """Format a constraint violation from its rule, falling back when the bound is absent from ctx."""
 
     value = ctx.get(rule.ctx_key)
-    if value is None:
+    if value is None or value == "":
         return f"Field '{field}' {rule.fallback}"
 
     unit = "item" if value == 1 else "items"
@@ -160,11 +163,6 @@ def format_single_error(error: dict) -> str:
         return format_constraint_error(field, ctx, rule)
 
     match error_type:
-        case "enum":
-            expected = ctx.get("expected", "")
-            if expected:
-                return f"Field '{field}' must be one of: {expected}"
-            return f"Field '{field}' has an invalid value"
         case "value_error":
             # Pydantic prefixes with "Value error, " -- strip it
             return msg.removeprefix("Value error, ")
