@@ -1,8 +1,10 @@
 from http import HTTPStatus
 
+import pytest
 from httpx import AsyncClient
 
-from tests.conftest import SAMPLE_PAYLOAD
+from fastapi_custom_responses import PaginatedResponse
+from tests.conftest import SAMPLE_PAYLOAD, ValidationPayload
 
 
 class TestSuccessEnvelopes:
@@ -37,3 +39,40 @@ class TestSuccessEnvelopes:
             "data": [SAMPLE_PAYLOAD.model_dump()],
             "meta": {"offset": 0, "limit": 10, "total": 1},
         }
+
+
+class TestBuildPage:
+    """Tests for building a paginated response from a page of items."""
+
+    def test_assembles_the_envelope_and_metadata(self) -> None:
+        """Test that a page of items and its bounds become a complete paginated response."""
+
+        page = PaginatedResponse.build_page([SAMPLE_PAYLOAD], offset=20, limit=10, total=57)
+
+        assert page.model_dump() == {
+            "success": True,
+            "data": [SAMPLE_PAYLOAD.model_dump()],
+            "meta": {"offset": 20, "limit": 10, "total": 57},
+        }
+
+    def test_accepts_an_empty_page(self) -> None:
+        """Test that a page past the end of the results carries no items and the real total."""
+
+        page = PaginatedResponse.build_page([], offset=90, limit=10, total=57)
+
+        assert page.data == []
+        assert page.meta.total == 57
+
+    def test_bounds_cannot_be_passed_positionally(self) -> None:
+        """Test that the three bounds are keyword-only and cannot be transposed by position."""
+
+        with pytest.raises(TypeError):
+            # pylint: disable-next=too-many-function-args
+            PaginatedResponse.build_page([SAMPLE_PAYLOAD], 20, 10, 57)
+
+    def test_parametrized_page_validates_its_items(self) -> None:
+        """Test that a parametrized paginated response still validates the items it is given."""
+
+        page = PaginatedResponse[ValidationPayload].build_page([SAMPLE_PAYLOAD], offset=0, limit=10, total=1)
+
+        assert page.data == [SAMPLE_PAYLOAD]

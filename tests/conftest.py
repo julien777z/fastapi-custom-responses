@@ -97,11 +97,7 @@ def create_test_app() -> FastAPI:
 
     @app.get("/paginated-response")
     async def paginated_response_endpoint() -> PaginatedResponse[ValidationPayload]:
-        return PaginatedResponse(
-            success=True,
-            data=[SAMPLE_PAYLOAD],
-            meta=PaginationMeta(offset=0, limit=10, total=1),
-        )
+        return PaginatedResponse.build_page([SAMPLE_PAYLOAD], offset=0, limit=10, total=1)
 
     @app.get("/error-response")
     async def error_response_endpoint() -> dict:
