@@ -77,32 +77,36 @@ class ValueErrorPayload(BaseModel):
         return v
 
 
-RAISED_ERRORS: Final[dict[str, Exception]] = {
-    "/error-response": ErrorResponse(error="Custom error message", status_code=HTTPStatus.BAD_REQUEST),
-    "/error-response-not-found": ErrorResponse(error="Item not found", status_code=HTTPStatus.NOT_FOUND),
-    "/error-response-with-code": ErrorResponse(
+RAISED_ERRORS: Final[dict[str, Callable[[], Exception]]] = {
+    "/error-response": lambda: ErrorResponse(
+        error="Custom error message", status_code=HTTPStatus.BAD_REQUEST
+    ),
+    "/error-response-not-found": lambda: ErrorResponse(
+        error="Item not found", status_code=HTTPStatus.NOT_FOUND
+    ),
+    "/error-response-with-code": lambda: ErrorResponse(
         error="Custom error message",
         status_code=HTTPStatus.FORBIDDEN,
         code=AccessErrorCode.PERMISSION_DENIED,
     ),
-    "/error-response-from-status": ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN),
-    "/error-response-from-status-with-code": ErrorResponse.from_status_code(
+    "/error-response-from-status": lambda: ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN),
+    "/error-response-from-status-with-code": lambda: ErrorResponse.from_status_code(
         HTTPStatus.FORBIDDEN, code=AccessErrorCode.PERMISSION_DENIED
     ),
-    "/http-exception": HTTPException(status_code=HTTPStatus.UNAUTHORIZED, detail="Not authenticated"),
-    "/http-exception-unusual-status": HTTPException(
+    "/http-exception": lambda: HTTPException(status_code=HTTPStatus.UNAUTHORIZED, detail="Not authenticated"),
+    "/http-exception-unusual-status": lambda: HTTPException(
         status_code=HTTPStatus.IM_A_TEAPOT, detail="I'm a teapot"
     ),
-    "/value-error": ValueError("Invalid value provided"),
-    "/general-exception": RuntimeError("Something went wrong"),
+    "/value-error": lambda: ValueError("Invalid value provided"),
+    "/general-exception": lambda: RuntimeError("Something went wrong"),
 }
 
 
-def raise_error_endpoint(error: Exception) -> Callable[[], Awaitable[None]]:
-    """Build an endpoint that raises the given error."""
+def raise_error_endpoint(build_error: Callable[[], Exception]) -> Callable[[], Awaitable[None]]:
+    """Build an endpoint that raises a freshly built error."""
 
     async def _raise_error() -> None:
-        raise error
+        raise build_error()
 
     return _raise_error
 
@@ -112,8 +116,9 @@ VALID_CONSTRAINED_PAYLOAD = ConstrainedPayload(
 )
 
 
-def create_test_app() -> FastAPI:
-    """Create a minimal FastAPI app with exception handlers for testing."""
+@pytest.fixture
+def app() -> FastAPI:
+    """Minimal FastAPI app with the library's exception handlers registered."""
 
     app = FastAPI(exception_handlers=EXCEPTION_HANDLERS)
 
@@ -141,14 +146,15 @@ def create_test_app() -> FastAPI:
     async def paginated_response_endpoint() -> PaginatedResponse[ValidationPayload]:
         return PaginatedResponse.build_page([SAMPLE_PAYLOAD], offset=0, limit=10, total=1)
 
-    for path, error in RAISED_ERRORS.items():
-        app.get(path)(raise_error_endpoint(error))
+    for path, build_error in RAISED_ERRORS.items():
+        app.get(path)(raise_error_endpoint(build_error))
 
     return app
 
 
-def create_documented_app() -> FastAPI:
-    """Create an app whose routes document their responses, for OpenAPI assertions."""
+@pytest.fixture
+def documented_app() -> FastAPI:
+    """App whose routes document their responses."""
 
     app = FastAPI()
 
@@ -166,20 +172,6 @@ def create_documented_app() -> FastAPI:
         return SuccessResponse(success=True)
 
     return app
-
-
-@pytest.fixture
-def documented_app() -> FastAPI:
-    """App whose routes document their responses."""
-
-    return create_documented_app()
-
-
-@pytest.fixture
-def app() -> FastAPI:
-    """FastAPI app fixture."""
-
-    return create_test_app()
 
 
 @pytest.fixture
