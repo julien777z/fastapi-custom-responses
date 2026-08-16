@@ -144,7 +144,13 @@ Default messages and codes for common status codes:
 | `400` | `"Invalid request"` | `bad_request` |
 | `500` | `"An unexpected error occurred"` | `internal_server_error` |
 
-Default codes are derived from the status name, so every standard error status has one.
+Default codes are derived from the status name, so every standard error status has one. Statuses outside
+the table above fall back to the `500` message, so pass `error` explicitly for any other status:
+
+```py
+raise ErrorResponse(error="That name is already taken", status_code=HTTPStatus.CONFLICT)
+# { "success": false, "error": "That name is already taken", "code": "conflict" }
+```
 
 ### Error Codes
 
@@ -228,7 +234,7 @@ Supported Pydantic error types and their human-readable formats:
 | `int_type` / `int_parsing` | `Field 'age' must be a valid integer` |
 | `float_type` / `float_parsing` | `Field 'price' must be a valid number` |
 | `bool_type` / `bool_parsing` | `Field 'active' must be a boolean` |
-| `enum` | `Field 'status' must be one of: active, inactive` |
+| `enum` | `Field 'status' must be one of: 'active' or 'inactive'` |
 | `uuid_type` / `uuid_parsing` | `Field 'id' must be a valid UUID` |
 | `string_too_short` | `Field 'name' must be at least 3 characters` |
 | `string_too_long` | `Field 'name' must be at most 50 characters` |
@@ -264,7 +270,7 @@ Each error code enum becomes its own named schema in the OpenAPI document, so ge
 "AccessErrorCode": { "type": "string", "enum": ["permission_denied", "account_suspended"] }
 ```
 
-Error statuses are described with the library's own message rather than the generic status phrase. Entries needing `headers`, custom media types, or `links` are written directly and merge with the result:
+The statuses with default messages are described with the library's own message; the rest keep FastAPI's status phrase. Entries needing `headers`, custom media types, or `links` are written directly and merge with the result:
 
 ```py
 responses={**fastapi_responses({HTTPStatus.FORBIDDEN: AccessErrorCode}), HTTPStatus.NOT_MODIFIED: {"headers": {...}}}
