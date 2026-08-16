@@ -2,12 +2,6 @@ import argparse
 import subprocess
 
 
-def git(*arguments: str) -> None:
-    """Run a git command, raising when it fails."""
-
-    subprocess.run(["git", *arguments], check=True)
-
-
 def main() -> None:
     """Commit the version bump, tag it, and push both to the current branch."""
 
@@ -15,13 +9,16 @@ def main() -> None:
     parser.add_argument("version")
     arguments = parser.parse_args()
 
-    git("config", "user.name", "github-actions")
-    git("config", "user.email", "github-actions@github.com")
+    commands = (
+        ("config", "user.name", "github-actions"),
+        ("config", "user.email", "github-actions@github.com"),
+        ("commit", "pyproject.toml", "-m", f"chore(release): bump version to {arguments.version}"),
+        ("tag", arguments.version),
+        ("push", "--atomic", "origin", "HEAD", f"refs/tags/{arguments.version}"),
+    )
 
-    git("commit", "-am", f"chore(release): bump version to {arguments.version}")
-    git("tag", arguments.version)
-
-    git("push", "--atomic", "origin", "HEAD", f"refs/tags/{arguments.version}")
+    for command in commands:
+        subprocess.run(["git", *command], check=True)
 
 
 if __name__ == "__main__":

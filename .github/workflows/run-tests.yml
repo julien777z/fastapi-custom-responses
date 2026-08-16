@@ -4,14 +4,14 @@ on:
   push:
     branches:
       - "**"
-    paths:
-      - "fastapi_custom_responses/**"
-      - "tests/**"
-      - "pyproject.toml"
-      - "poetry.lock"
-      - ".python-version"
-      - ".github/actions/setup-python-poetry/action.yml"
-      - ".github/workflows/run-tests.yml"
+    paths-ignore:
+      - "README.md"
+      - "LICENSE"
+      - "AGENTS.md"
+      - ".agents/**"
+      - ".claude/**"
+      - ".codex/**"
+      - ".cursor/**"
 
 jobs:
   test:
@@ -26,6 +26,12 @@ jobs:
 
       - name: Install dependencies
         run: poetry install -E dev
+
+      - name: Lint
+        run: |
+          poetry run black --check .
+          poetry run isort --check-only .
+          poetry run pylint fastapi_custom_responses/ .github/scripts/
 
       - name: Run Tests
         run: poetry run pytest tests/ -v

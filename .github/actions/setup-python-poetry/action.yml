@@ -1,11 +1,5 @@
 name: Setup Python and Poetry
-description: Set up the repository's Python version and a specific Poetry version for CI jobs.
-
-inputs:
-  poetry-version:
-    description: Poetry version to install
-    required: false
-    default: "2.1.4"
+description: Set up the repository's Python version and Poetry for CI jobs.
 
 runs:
   using: composite
@@ -18,5 +12,5 @@ runs:
     - name: Install Poetry
       shell: bash
       run: |
-        pipx install poetry==${{ inputs.poetry-version }}
+        pipx install poetry==2.1.4
         echo "$HOME/.local/bin" >> "$GITHUB_PATH"

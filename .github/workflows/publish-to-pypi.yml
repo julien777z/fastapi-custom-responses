@@ -13,6 +13,10 @@ on:
           - minor
           - major
 
+concurrency:
+  group: publish-to-pypi
+  cancel-in-progress: false
+
 permissions:
   contents: write
   id-token: write
@@ -35,14 +39,14 @@ jobs:
         id: bump
         run: python .github/scripts/bump_version.py "${{ github.event.inputs.version_increment }}"
 
+      - name: Commit, tag, and push the version bump
+        run: python .github/scripts/commit_release.py "${{ steps.bump.outputs.new }}"
+
       - name: Build package
         run: poetry build
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
-
-      - name: Commit, tag, and push the version bump
-        run: python .github/scripts/commit_release.py "${{ steps.bump.outputs.new }}"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
