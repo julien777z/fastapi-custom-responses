@@ -23,7 +23,6 @@ ERROR_MESSAGES: Final[dict[HTTPStatus, str]] = {
 SIMPLE_TYPE_MESSAGES: Final[dict[str, str]] = {
     "missing": "is required",
     "string_type": "must be a string",
-    "str_type": "must be a string",
     "int_type": "must be a valid integer",
     "int_parsing": "must be a valid integer",
     "float_type": "must be a valid number",
