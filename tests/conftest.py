@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from fastapi_custom_responses import (
     EXCEPTION_HANDLERS,
+    DefaultErrorCode,
     ErrorResponse,
     PaginatedResponse,
     Response,
@@ -67,9 +68,13 @@ class ValueErrorPayload(BaseModel):
         return v
 
 
-SAMPLE_PAYLOAD = ValidationPayload(name="Alice", age=30, email="alice@example.com")
+SECRET_TOKEN: Final[str] = "sk-live-must-never-reach-the-wire"
 
-VALID_CONSTRAINED_PAYLOAD = ConstrainedPayload(
+INTERNAL_RECORD: Final[dict[str, str]] = {"token": SECRET_TOKEN}
+
+SAMPLE_PAYLOAD: Final[ValidationPayload] = ValidationPayload(name="Alice", age=30, email="alice@example.com")
+
+VALID_CONSTRAINED_PAYLOAD: Final[ConstrainedPayload] = ConstrainedPayload(
     username="alice", score=50, rating=2.5, color=Color.RED, tags=["a"]
 )
 
@@ -77,24 +82,24 @@ VALID_CONSTRAINED_PAYLOAD = ConstrainedPayload(
 class RaisedErrorCase(BaseModel):
     """One error a route raises and the envelope it must render."""
 
-    build_error: Callable[[], Exception]
+    build_exception: Callable[[], Exception]
     status_code: HTTPStatus
     expected_body: dict[str, Any]
 
 
 RAISED_ERROR_CASES: Final[dict[str, RaisedErrorCase]] = {
     "default_status": RaisedErrorCase(
-        build_error=lambda: ErrorResponse("Custom error message"),
+        build_exception=lambda: ErrorResponse("Custom error message"),
         status_code=HTTPStatus.BAD_REQUEST,
         expected_body={"success": False, "error": "Custom error message"},
     ),
     "custom_status": RaisedErrorCase(
-        build_error=lambda: ErrorResponse("Item not found", HTTPStatus.NOT_FOUND),
+        build_exception=lambda: ErrorResponse("Item not found", HTTPStatus.NOT_FOUND),
         status_code=HTTPStatus.NOT_FOUND,
         expected_body={"success": False, "error": "Item not found"},
     ),
     "with_code": RaisedErrorCase(
-        build_error=lambda: ErrorResponse(
+        build_exception=lambda: ErrorResponse(
             "Custom error message",
             HTTPStatus.FORBIDDEN,
             code=AccessErrorCode.PERMISSION_DENIED,
@@ -107,7 +112,7 @@ RAISED_ERROR_CASES: Final[dict[str, RaisedErrorCase]] = {
         },
     ),
     "from_status_code": RaisedErrorCase(
-        build_error=lambda: ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN),
+        build_exception=lambda: ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN),
         status_code=HTTPStatus.FORBIDDEN,
         expected_body={
             "success": False,
@@ -115,7 +120,7 @@ RAISED_ERROR_CASES: Final[dict[str, RaisedErrorCase]] = {
         },
     ),
     "from_status_code_with_code": RaisedErrorCase(
-        build_error=lambda: ErrorResponse.from_status_code(
+        build_exception=lambda: ErrorResponse.from_status_code(
             HTTPStatus.FORBIDDEN, code=AccessErrorCode.PERMISSION_DENIED
         ),
         status_code=HTTPStatus.FORBIDDEN,
@@ -125,18 +130,25 @@ RAISED_ERROR_CASES: Final[dict[str, RaisedErrorCase]] = {
             "code": "permission_denied",
         },
     ),
+    "from_status_code_without_a_default_message": RaisedErrorCase(
+        build_exception=lambda: ErrorResponse.from_status_code(HTTPStatus.CONFLICT),
+        status_code=HTTPStatus.CONFLICT,
+        expected_body={"success": False, "error": "Conflict"},
+    ),
     "http_exception": RaisedErrorCase(
-        build_error=lambda: HTTPException(status_code=HTTPStatus.UNAUTHORIZED, detail="Not authenticated"),
+        build_exception=lambda: HTTPException(
+            status_code=HTTPStatus.UNAUTHORIZED, detail="Not authenticated"
+        ),
         status_code=HTTPStatus.UNAUTHORIZED,
         expected_body={"success": False, "error": "Not authenticated"},
     ),
     "http_exception_with_a_structured_detail": RaisedErrorCase(
-        build_error=lambda: HTTPException(status_code=HTTPStatus.CONFLICT, detail={"reason": "taken"}),
+        build_exception=lambda: HTTPException(status_code=HTTPStatus.CONFLICT, detail={"reason": "taken"}),
         status_code=HTTPStatus.CONFLICT,
         expected_body={"success": False, "error": "{'reason': 'taken'}"},
     ),
     "value_error": RaisedErrorCase(
-        build_error=lambda: ValueError("Invalid value provided"),
+        build_exception=lambda: ValueError("Invalid value provided"),
         status_code=HTTPStatus.BAD_REQUEST,
         expected_body={
             "success": False,
@@ -145,7 +157,7 @@ RAISED_ERROR_CASES: Final[dict[str, RaisedErrorCase]] = {
         },
     ),
     "unhandled_exception": RaisedErrorCase(
-        build_error=lambda: RuntimeError("Something went wrong"),
+        build_exception=lambda: RuntimeError("Something went wrong"),
         status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
         expected_body={
             "success": False,
@@ -186,9 +198,15 @@ def app() -> FastAPI:
     async def paginated_response_endpoint() -> PaginatedResponse[ValidationPayload]:
         return PaginatedResponse.build_page([SAMPLE_PAYLOAD], offset=0, limit=10, total=1)
 
+    @app.get("/invalid-model")
+    async def invalid_model_endpoint() -> SuccessResponse:
+        ValidationPayload.model_validate(INTERNAL_RECORD)
+
+        return SuccessResponse(success=True)
+
     @app.get("/raise/{case_name}")
     async def raise_error_endpoint(case_name: str) -> None:
-        raise RAISED_ERROR_CASES[case_name].build_error()
+        raise RAISED_ERROR_CASES[case_name].build_exception()
 
     return app
 
@@ -204,6 +222,7 @@ def documented_app() -> FastAPI:
         responses=fastapi_responses(
             {
                 HTTPStatus.CREATED: Response[ValidationPayload],
+                HTTPStatus.BAD_REQUEST: AccessErrorCode | DefaultErrorCode,
                 HTTPStatus.FORBIDDEN: AccessErrorCode,
                 HTTPStatus.NOT_FOUND: None,
             }

@@ -118,6 +118,7 @@ Every error then normalizes into one JSON shape:
 | `RequestValidationError` | `400` | `validation_error` | Pydantic validation errors are converted to human-readable messages (see below) |
 | `HTTPException` | From exception | None | Uses the exception `detail` as the error message |
 | `ValueError` | `400` | `invalid_value` | Uses `str(exc)` as the error message |
+| `ValidationError` (Pydantic) | `500` | `internal_error` | A model failed to validate inside your app; logged and reported generically so its details stay out of the body |
 | `Exception` (catch-all) | `500` | `internal_error` | Returns a generic `"An unexpected error occurred"` message |
 
 `code` is present when a condition was named — by you, or by one of the library's own handlers. It is absent otherwise, rather than restating the status.
@@ -150,7 +151,7 @@ Default messages for common status codes:
 | `400` | `"Invalid request"` |
 | `500` | `"An unexpected error occurred"` |
 
-`from_status_code` accepts only these five statuses. Pass `error` yourself for any other:
+Any other status falls back to its standard HTTP phrase, so pass `error` yourself when you want better wording:
 
 ```py
 raise ErrorResponse(error="That name is already taken", status_code=HTTPStatus.CONFLICT)
@@ -244,10 +245,9 @@ raise ErrorResponse(
 raise ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN, code=AccessErrorCode.PERMISSION_DENIED)
 ```
 
-
 ## Documenting Responses
 
-`fastapi_responses` builds FastAPI's `responses` mapping. Give it an error code enum, `None` for the bare error envelope, or a success envelope:
+`fastapi_responses` builds FastAPI's `responses` mapping. Give it an error code enum, a union of enums, `None` for the bare error envelope, or a success envelope:
 
 ```py
 from fastapi_custom_responses import Response, SuccessResponse, fastapi_responses
@@ -267,6 +267,12 @@ Each error code enum becomes its own named schema in the OpenAPI document, so ge
 
 ```json
 "AccessErrorCode": { "type": "string", "enum": ["permission_denied", "account_suspended"], "title": "AccessErrorCode" }
+```
+
+A status the library's own handlers also answer carries their codes too, so union `DefaultErrorCode` in to document every value that status can emit — `400` covers `validation_error` and `invalid_value`, `500` covers `internal_error`:
+
+```py
+responses=fastapi_responses({HTTPStatus.BAD_REQUEST: OrderErrorCode | DefaultErrorCode})
 ```
 
 The statuses with default messages are described with the library's own message; the rest keep FastAPI's status phrase. Entries needing `headers`, custom media types, or `links` are written directly and merge with the result:
@@ -294,5 +300,5 @@ Format and lint:
 ```bash
 poetry run black .
 poetry run isort .
-poetry run pylint fastapi_custom_responses/
+poetry run pylint fastapi_custom_responses/ .github/scripts/
 ```

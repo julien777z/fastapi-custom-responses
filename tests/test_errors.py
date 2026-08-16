@@ -9,6 +9,7 @@ from httpx import AsyncClient
 from pydantic import ValidationError
 
 from fastapi_custom_responses import (
+    DefaultErrorCode,
     ErrorResponse,
     ErrorResponseModel,
     SuccessResponse,
@@ -19,7 +20,13 @@ from fastapi_custom_responses.errors import (
     format_single_error,
     format_validation_errors,
 )
-from tests.conftest import RAISED_ERROR_CASES, VALID_CONSTRAINED_PAYLOAD, AccessErrorCode, RaisedErrorCase
+from tests.conftest import (
+    RAISED_ERROR_CASES,
+    SECRET_TOKEN,
+    VALID_CONSTRAINED_PAYLOAD,
+    AccessErrorCode,
+    RaisedErrorCase,
+)
 
 
 class TestValidationErrors:
@@ -172,6 +179,19 @@ class TestErrorEnvelope:
         assert response.status_code == case.status_code
         assert response.json() == case.expected_body
 
+    async def test_a_model_that_fails_to_validate_reports_generically(self, client: AsyncClient) -> None:
+        """Test that a model failing to validate inside the app never echoes what it was given."""
+
+        response = await client.get("/invalid-model")
+
+        assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
+        assert response.json() == {
+            "success": False,
+            "error": "An unexpected error occurred",
+            "code": "internal_error",
+        }
+        assert SECRET_TOKEN not in response.text
+
 
 class TestErrorResponseCode:
     """Tests for the error code carried by ErrorResponse."""
@@ -194,13 +214,6 @@ class TestErrorResponseModel:
         """Test that ErrorResponseModel leaves the code unset when none is given."""
 
         assert ErrorResponseModel(success=False, error="Denied").code is None
-
-    def test_error_defaults_to_the_generic_message(self) -> None:
-        """Test that omitting the error message falls back to the generic one."""
-
-        model = ErrorResponseModel(success=False)
-
-        assert model.error == "An unexpected error occurred"
 
     def test_json_schema_exposes_code_as_optional(self) -> None:
         """Test that the generated JSON schema lists code as an optional property."""
@@ -265,6 +278,16 @@ class TestFastapiResponses:
             "description": "Resource not found",
         }
 
+    def test_a_union_of_enums_parametrizes_the_envelope(self) -> None:
+        """Test that a union of error code enums documents every code the status can carry."""
+
+        responses = fastapi_responses({HTTPStatus.BAD_REQUEST: AccessErrorCode | DefaultErrorCode})
+
+        assert responses[HTTPStatus.BAD_REQUEST] == {
+            "model": ErrorResponseModel[AccessErrorCode | DefaultErrorCode],
+            "description": "Invalid request",
+        }
+
     def test_success_model_is_passed_through(self) -> None:
         """Test that a success envelope is documented as given, leaving its description to FastAPI."""
 
@@ -303,6 +326,16 @@ class TestOpenApiSchema:
             {"$ref": "#/components/schemas/AccessErrorCode"},
             {"type": "null"},
         ]
+
+        bad_request = responses[str(int(HTTPStatus.BAD_REQUEST))]
+        union_envelope = bad_request["content"]["application/json"]["schema"]["$ref"].rsplit("/", 1)[-1]
+
+        assert schemas[union_envelope]["properties"]["code"]["anyOf"] == [
+            {"$ref": "#/components/schemas/AccessErrorCode"},
+            {"$ref": "#/components/schemas/DefaultErrorCode"},
+            {"type": "null"},
+        ]
+        assert schemas["DefaultErrorCode"]["enum"] == ["validation_error", "invalid_value", "internal_error"]
 
 
 class TestFormatFieldLocation:

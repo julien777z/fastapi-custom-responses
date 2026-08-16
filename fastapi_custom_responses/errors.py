@@ -2,12 +2,13 @@ import logging
 from collections.abc import Callable
 from enum import StrEnum
 from http import HTTPStatus
+from types import UnionType
 from typing import Any, Final, Literal, Self
 
 from fastapi import HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -33,15 +34,7 @@ SIMPLE_TYPE_MESSAGES: Final[dict[str, str]] = {
     "uuid_parsing": "must be a valid UUID",
 }
 
-type ResponseSpec = type[StrEnum] | type[BaseModel]
-
-type DefaultMessageStatus = Literal[
-    HTTPStatus.BAD_REQUEST,
-    HTTPStatus.UNAUTHORIZED,
-    HTTPStatus.FORBIDDEN,
-    HTTPStatus.NOT_FOUND,
-    HTTPStatus.INTERNAL_SERVER_ERROR,
-]
+type ResponseSpec = type[StrEnum] | type[BaseModel] | UnionType
 
 
 class DefaultErrorCode(StrEnum):
@@ -56,8 +49,14 @@ class ErrorResponseModel[CodeT: str](BaseModel):
     """Error response schema for use in FastAPI's `responses` parameter."""
 
     success: Literal[False]
-    error: str = ERROR_MESSAGES[HTTPStatus.INTERNAL_SERVER_ERROR]
+    error: str
     code: CodeT | None = None
+
+
+def status_message(status_code: HTTPStatus) -> str:
+    """Return the library's message for a status code, or the standard HTTP phrase."""
+
+    return ERROR_MESSAGES.get(status_code) or status_code.phrase
 
 
 class ErrorResponse(Exception):
@@ -79,10 +78,10 @@ class ErrorResponse(Exception):
         super().__init__(error)
 
     @classmethod
-    def from_status_code(cls, status_code: DefaultMessageStatus, *, code: StrEnum | None = None) -> Self:
-        """Create an error response from a status code that has a default message."""
+    def from_status_code(cls, status_code: HTTPStatus, *, code: StrEnum | None = None) -> Self:
+        """Create an error response carrying the default message for a status code."""
 
-        return cls(error=ERROR_MESSAGES[status_code], status_code=status_code, code=code)
+        return cls(error=status_message(status_code), status_code=status_code, code=code)
 
 
 def format_field_location(loc: tuple[int | str, ...]) -> str:
@@ -229,6 +228,18 @@ def value_error_handler(_: Request, exc: ValueError) -> JSONResponse:
     return error_json_response(HTTPStatus.BAD_REQUEST, str(exc), DefaultErrorCode.INVALID_VALUE)
 
 
+def model_validation_error_handler(_: Request, exc: ValidationError) -> JSONResponse:
+    """Handle a model that failed to validate inside the application, never echoing its details."""
+
+    logger.exception(exc)
+
+    return error_json_response(
+        HTTPStatus.INTERNAL_SERVER_ERROR,
+        ERROR_MESSAGES[HTTPStatus.INTERNAL_SERVER_ERROR],
+        DefaultErrorCode.INTERNAL_ERROR,
+    )
+
+
 def error_response_handler(_: Request, exc: ErrorResponse) -> JSONResponse:
     """Convert ErrorResponse exceptions to proper JSONResponse objects."""
 
@@ -260,12 +271,12 @@ def http_exception_handler(_: Request, exc: HTTPException) -> JSONResponse:
 def response_entry(status_code: HTTPStatus, spec: ResponseSpec | None) -> dict[str, Any]:
     """Build one FastAPI response entry from a status code and its model or error codes."""
 
-    if spec is not None and issubclass(spec, BaseModel):
+    if isinstance(spec, type) and issubclass(spec, BaseModel):
         return {"model": spec}
 
     model = ErrorResponseModel if spec is None else ErrorResponseModel[spec]
 
-    return {"model": model, "description": ERROR_MESSAGES.get(status_code, status_code.phrase)}
+    return {"model": model, "description": status_message(status_code)}
 
 
 def fastapi_responses(specs: dict[HTTPStatus, ResponseSpec | None]) -> dict[int | str, dict[str, Any]]:
@@ -277,6 +288,7 @@ def fastapi_responses(specs: dict[HTTPStatus, ResponseSpec | None]) -> dict[int 
 EXCEPTION_HANDLERS: dict[type[Exception], Callable[[Request, Exception], JSONResponse]] = {
     HTTPException: http_exception_handler,
     RequestValidationError: validation_exception_handler,
+    ValidationError: model_validation_error_handler,
     ValueError: value_error_handler,
     ErrorResponse: error_response_handler,
     Exception: general_exception_handler,

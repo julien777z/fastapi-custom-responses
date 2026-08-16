@@ -1,4 +1,4 @@
-from typing import Self
+from typing import Literal, Self
 
 from pydantic_super_model import SuperModelPydanticMixin
 
@@ -6,13 +6,13 @@ from pydantic_super_model import SuperModelPydanticMixin
 class SuccessResponse(SuperModelPydanticMixin):
     """Success response without data."""
 
-    success: bool
+    success: Literal[True]
 
 
 class Response[T](SuperModelPydanticMixin):
     """Success response carrying a data payload."""
 
-    success: bool
+    success: Literal[True]
     data: T
 
 
