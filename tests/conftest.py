@@ -70,8 +70,6 @@ class ValueErrorPayload(BaseModel):
 
 SECRET_TOKEN: Final[str] = "sk-live-must-never-reach-the-wire"
 
-INTERNAL_RECORD: Final[dict[str, str]] = {"token": SECRET_TOKEN}
-
 SAMPLE_PAYLOAD: Final[ValidationPayload] = ValidationPayload(name="Alice", age=30, email="alice@example.com")
 
 VALID_CONSTRAINED_PAYLOAD: Final[ConstrainedPayload] = ConstrainedPayload(
@@ -200,7 +198,7 @@ def app() -> FastAPI:
 
     @app.get("/invalid-model")
     async def invalid_model_endpoint() -> SuccessResponse:
-        ValidationPayload.model_validate(INTERNAL_RECORD)
+        ValidationPayload.model_validate({"token": SECRET_TOKEN})
 
         return SuccessResponse(success=True)
 

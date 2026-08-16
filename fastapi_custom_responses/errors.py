@@ -60,7 +60,7 @@ def status_message(status_code: HTTPStatus) -> str:
 
 
 class ErrorResponse(Exception):
-    """Standard error response that includes error message."""
+    """Exception carrying the message, status code, and code to render as an error response."""
 
     def __init__(
         self,
@@ -87,11 +87,9 @@ class ErrorResponse(Exception):
 def format_field_location(loc: tuple[int | str, ...]) -> str:
     """Extract the field name from a validation error location tuple."""
 
-    # Filter out 'body', 'query', 'path' prefixes and join remaining parts
     field_parts = [str(part) for part in loc if part not in ("body", "query", "path", "header")]
 
     if not field_parts:
-        # If all parts were filtered out, use the last part of the original location
         return str(loc[-1]) if loc else "field"
 
     return ".".join(field_parts)
@@ -161,7 +159,7 @@ def format_constraint_error(field: str, ctx: dict[str, Any], rule: ConstraintRul
     return f"Field '{field}' {rule.template.format(value=format_constraint_value(value), unit=unit)}"
 
 
-def format_single_error(error: dict) -> str:
+def format_single_error(error: dict[str, Any]) -> str:
     """Format a single Pydantic validation error into a human-readable message."""
 
     field = format_field_location(error.get("loc", ()))
@@ -183,7 +181,6 @@ def format_single_error(error: dict) -> str:
         case "json_invalid":
             return "Invalid JSON in request body"
         case _:
-            # For any other error type, use the Pydantic message with the field name
             if msg:
                 return f"Field '{field}': {msg}"
 
@@ -221,23 +218,11 @@ def validation_exception_handler(_: Request, exc: RequestValidationError) -> JSO
 
 
 def value_error_handler(_: Request, exc: ValueError) -> JSONResponse:
-    """Handle value errors, e.g., Pydantic validation errors."""
+    """Handle a value the application rejected, reporting it as a bad request."""
 
     logger.exception(exc)
 
     return error_json_response(HTTPStatus.BAD_REQUEST, str(exc), DefaultErrorCode.INVALID_VALUE)
-
-
-def model_validation_error_handler(_: Request, exc: ValidationError) -> JSONResponse:
-    """Handle a model that failed to validate inside the application, never echoing its details."""
-
-    logger.exception(exc)
-
-    return error_json_response(
-        HTTPStatus.INTERNAL_SERVER_ERROR,
-        ERROR_MESSAGES[HTTPStatus.INTERNAL_SERVER_ERROR],
-        DefaultErrorCode.INTERNAL_ERROR,
-    )
 
 
 def error_response_handler(_: Request, exc: ErrorResponse) -> JSONResponse:
@@ -288,7 +273,7 @@ def fastapi_responses(specs: dict[HTTPStatus, ResponseSpec | None]) -> dict[int 
 EXCEPTION_HANDLERS: dict[type[Exception], Callable[[Request, Exception], JSONResponse]] = {
     HTTPException: http_exception_handler,
     RequestValidationError: validation_exception_handler,
-    ValidationError: model_validation_error_handler,
+    ValidationError: general_exception_handler,
     ValueError: value_error_handler,
     ErrorResponse: error_response_handler,
     Exception: general_exception_handler,
