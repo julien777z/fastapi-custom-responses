@@ -2,7 +2,7 @@ import logging
 from collections.abc import Callable
 from enum import StrEnum
 from http import HTTPStatus
-from typing import Any, Final, Self
+from typing import Any, Final, Literal, Self
 
 from fastapi import HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -11,7 +11,7 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
-ERROR_MESSAGES: Final[dict[int, str]] = {
+ERROR_MESSAGES: Final[dict[HTTPStatus, str]] = {
     HTTPStatus.UNAUTHORIZED: "Authentication required",
     HTTPStatus.FORBIDDEN: "You don't have permission to perform this action",
     HTTPStatus.NOT_FOUND: "Resource not found",
@@ -35,6 +35,14 @@ SIMPLE_TYPE_MESSAGES: Final[dict[str, str]] = {
 
 type ResponseSpec = type[StrEnum] | type[BaseModel]
 
+type DefaultMessageStatus = Literal[
+    HTTPStatus.BAD_REQUEST,
+    HTTPStatus.UNAUTHORIZED,
+    HTTPStatus.FORBIDDEN,
+    HTTPStatus.NOT_FOUND,
+    HTTPStatus.INTERNAL_SERVER_ERROR,
+]
+
 
 class DefaultErrorCode(StrEnum):
     """Codes for the conditions the library's own handlers detect."""
@@ -47,7 +55,7 @@ class DefaultErrorCode(StrEnum):
 class ErrorResponseModel[CodeT: str](BaseModel):
     """Error response schema for use in FastAPI's `responses` parameter."""
 
-    success: bool
+    success: Literal[False]
     error: str = ERROR_MESSAGES[HTTPStatus.INTERNAL_SERVER_ERROR]
     code: CodeT | None = None
 
@@ -71,14 +79,10 @@ class ErrorResponse(Exception):
         super().__init__(error)
 
     @classmethod
-    def from_status_code(cls, status_code: int, *, code: StrEnum | None = None) -> Self:
-        """Create an error response from a status code."""
+    def from_status_code(cls, status_code: DefaultMessageStatus, *, code: StrEnum | None = None) -> Self:
+        """Create an error response from a status code that has a default message."""
 
-        return cls(
-            error=ERROR_MESSAGES.get(status_code, ERROR_MESSAGES[HTTPStatus.INTERNAL_SERVER_ERROR]),
-            status_code=status_code,
-            code=code,
-        )
+        return cls(error=ERROR_MESSAGES[status_code], status_code=status_code, code=code)
 
 
 def format_field_location(loc: tuple[int | str, ...]) -> str:
@@ -150,7 +154,7 @@ def format_constraint_error(field: str, ctx: dict[str, Any], rule: ConstraintRul
     """Format a constraint violation from its rule, falling back when the bound is absent from ctx."""
 
     value = ctx.get(rule.ctx_key)
-    if value is None or value == "":
+    if value is None:
         return f"Field '{field}' {rule.fallback}"
 
     unit = "item" if value == 1 else "items"

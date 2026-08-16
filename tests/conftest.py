@@ -33,9 +33,6 @@ class ValidationPayload(BaseModel):
     email: str
 
 
-SAMPLE_PAYLOAD = ValidationPayload(name="Alice", age=30, email="alice@example.com")
-
-
 class Color(str, Enum):
     """Test enum for enum validation tests."""
 
@@ -70,43 +67,93 @@ class ValueErrorPayload(BaseModel):
         return v
 
 
-RAISED_ERRORS: Final[dict[str, Callable[[], Exception]]] = {
-    "/error-response": lambda: ErrorResponse(
-        error="Custom error message", status_code=HTTPStatus.BAD_REQUEST
-    ),
-    "/error-response-not-found": lambda: ErrorResponse(
-        error="Item not found", status_code=HTTPStatus.NOT_FOUND
-    ),
-    "/error-response-with-code": lambda: ErrorResponse(
-        error="Custom error message",
-        status_code=HTTPStatus.FORBIDDEN,
-        code=AccessErrorCode.PERMISSION_DENIED,
-    ),
-    "/error-response-from-status": lambda: ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN),
-    "/error-response-from-status-with-code": lambda: ErrorResponse.from_status_code(
-        HTTPStatus.FORBIDDEN, code=AccessErrorCode.PERMISSION_DENIED
-    ),
-    "/http-exception": lambda: HTTPException(status_code=HTTPStatus.UNAUTHORIZED, detail="Not authenticated"),
-    "/http-exception-unusual-status": lambda: HTTPException(
-        status_code=HTTPStatus.IM_A_TEAPOT, detail="I'm a teapot"
-    ),
-    "/value-error": lambda: ValueError("Invalid value provided"),
-    "/general-exception": lambda: RuntimeError("Something went wrong"),
-}
-
-
-def raise_error_endpoint(build_error: Callable[[], Exception]) -> Callable[[], Awaitable[None]]:
-    """Build an endpoint that raises a freshly built error."""
-
-    async def _raise_error() -> None:
-        raise build_error()
-
-    return _raise_error
-
+SAMPLE_PAYLOAD = ValidationPayload(name="Alice", age=30, email="alice@example.com")
 
 VALID_CONSTRAINED_PAYLOAD = ConstrainedPayload(
     username="alice", score=50, rating=2.5, color=Color.RED, tags=["a"]
 )
+
+
+class RaisedErrorCase(BaseModel):
+    """One error a route raises and the envelope it must render."""
+
+    build_error: Callable[[], Exception]
+    status_code: HTTPStatus
+    expected_body: dict
+
+
+RAISED_ERROR_CASES: Final[dict[str, RaisedErrorCase]] = {
+    "default_status": RaisedErrorCase(
+        build_error=lambda: ErrorResponse("Custom error message"),
+        status_code=HTTPStatus.BAD_REQUEST,
+        expected_body={"success": False, "error": "Custom error message"},
+    ),
+    "custom_status": RaisedErrorCase(
+        build_error=lambda: ErrorResponse("Item not found", HTTPStatus.NOT_FOUND),
+        status_code=HTTPStatus.NOT_FOUND,
+        expected_body={"success": False, "error": "Item not found"},
+    ),
+    "with_code": RaisedErrorCase(
+        build_error=lambda: ErrorResponse(
+            "Custom error message",
+            HTTPStatus.FORBIDDEN,
+            code=AccessErrorCode.PERMISSION_DENIED,
+        ),
+        status_code=HTTPStatus.FORBIDDEN,
+        expected_body={
+            "success": False,
+            "error": "Custom error message",
+            "code": "permission_denied",
+        },
+    ),
+    "from_status_code": RaisedErrorCase(
+        build_error=lambda: ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN),
+        status_code=HTTPStatus.FORBIDDEN,
+        expected_body={
+            "success": False,
+            "error": "You don't have permission to perform this action",
+        },
+    ),
+    "from_status_code_with_code": RaisedErrorCase(
+        build_error=lambda: ErrorResponse.from_status_code(
+            HTTPStatus.FORBIDDEN, code=AccessErrorCode.PERMISSION_DENIED
+        ),
+        status_code=HTTPStatus.FORBIDDEN,
+        expected_body={
+            "success": False,
+            "error": "You don't have permission to perform this action",
+            "code": "permission_denied",
+        },
+    ),
+    "http_exception": RaisedErrorCase(
+        build_error=lambda: HTTPException(status_code=HTTPStatus.UNAUTHORIZED, detail="Not authenticated"),
+        status_code=HTTPStatus.UNAUTHORIZED,
+        expected_body={"success": False, "error": "Not authenticated"},
+    ),
+    "http_exception_with_a_structured_detail": RaisedErrorCase(
+        build_error=lambda: HTTPException(status_code=HTTPStatus.CONFLICT, detail={"reason": "taken"}),
+        status_code=HTTPStatus.CONFLICT,
+        expected_body={"success": False, "error": "{'reason': 'taken'}"},
+    ),
+    "value_error": RaisedErrorCase(
+        build_error=lambda: ValueError("Invalid value provided"),
+        status_code=HTTPStatus.BAD_REQUEST,
+        expected_body={
+            "success": False,
+            "error": "Invalid value provided",
+            "code": "invalid_value",
+        },
+    ),
+    "unhandled_exception": RaisedErrorCase(
+        build_error=lambda: RuntimeError("Something went wrong"),
+        status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+        expected_body={
+            "success": False,
+            "error": "An unexpected error occurred",
+            "code": "internal_error",
+        },
+    ),
+}
 
 
 @pytest.fixture
@@ -139,8 +186,9 @@ def app() -> FastAPI:
     async def paginated_response_endpoint() -> PaginatedResponse[ValidationPayload]:
         return PaginatedResponse.build_page([SAMPLE_PAYLOAD], offset=0, limit=10, total=1)
 
-    for path, build_error in RAISED_ERRORS.items():
-        app.get(path)(raise_error_endpoint(build_error))
+    @app.get("/raise/{case_name}")
+    async def raise_error_endpoint(case_name: str) -> None:
+        raise RAISED_ERROR_CASES[case_name].build_error()
 
     return app
 

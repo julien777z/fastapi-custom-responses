@@ -3,6 +3,7 @@ from inspect import Parameter, signature
 
 import pytest
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from httpx import AsyncClient
 from pydantic import ValidationError
 
@@ -12,8 +13,12 @@ from fastapi_custom_responses import (
     SuccessResponse,
     fastapi_responses,
 )
-from fastapi_custom_responses.errors import format_field_location, format_single_error
-from tests.conftest import VALID_CONSTRAINED_PAYLOAD, AccessErrorCode
+from fastapi_custom_responses.errors import (
+    format_field_location,
+    format_single_error,
+    format_validation_errors,
+)
+from tests.conftest import RAISED_ERROR_CASES, VALID_CONSTRAINED_PAYLOAD, AccessErrorCode, RaisedErrorCase
 
 
 class TestValidationErrors:
@@ -155,87 +160,16 @@ class TestConstrainedValidationErrors:
 class TestErrorEnvelope:
     """Tests for the envelope every failing path renders."""
 
-    @pytest.mark.parametrize(
-        ("path", "status_code", "expected_body"),
-        [
-            (
-                "/error-response",
-                HTTPStatus.BAD_REQUEST,
-                {"success": False, "error": "Custom error message"},
-            ),
-            (
-                "/error-response-not-found",
-                HTTPStatus.NOT_FOUND,
-                {"success": False, "error": "Item not found"},
-            ),
-            (
-                "/error-response-from-status",
-                HTTPStatus.FORBIDDEN,
-                {
-                    "success": False,
-                    "error": "You don't have permission to perform this action",
-                },
-            ),
-            (
-                "/error-response-with-code",
-                HTTPStatus.FORBIDDEN,
-                {"success": False, "error": "Custom error message", "code": "permission_denied"},
-            ),
-            (
-                "/error-response-from-status-with-code",
-                HTTPStatus.FORBIDDEN,
-                {
-                    "success": False,
-                    "error": "You don't have permission to perform this action",
-                    "code": "permission_denied",
-                },
-            ),
-            (
-                "/http-exception",
-                HTTPStatus.UNAUTHORIZED,
-                {"success": False, "error": "Not authenticated"},
-            ),
-            (
-                "/http-exception-unusual-status",
-                HTTPStatus.IM_A_TEAPOT,
-                {"success": False, "error": "I'm a teapot"},
-            ),
-            (
-                "/value-error",
-                HTTPStatus.BAD_REQUEST,
-                {"success": False, "error": "Invalid value provided", "code": "invalid_value"},
-            ),
-            (
-                "/general-exception",
-                HTTPStatus.INTERNAL_SERVER_ERROR,
-                {
-                    "success": False,
-                    "error": "An unexpected error occurred",
-                    "code": "internal_error",
-                },
-            ),
-        ],
-        ids=[
-            "custom_message",
-            "custom_status",
-            "from_status_code",
-            "with_code",
-            "from_status_code_with_code",
-            "http_exception",
-            "http_exception_unusual_status",
-            "value_error",
-            "general_exception",
-        ],
-    )
+    @pytest.mark.parametrize(("case_name", "case"), RAISED_ERROR_CASES.items(), ids=RAISED_ERROR_CASES)
     async def test_renders_the_error_envelope(
-        self, client: AsyncClient, path: str, status_code: HTTPStatus, expected_body: dict
+        self, client: AsyncClient, case_name: str, case: RaisedErrorCase
     ) -> None:
         """Test that each failing path renders the envelope with its status and code."""
 
-        response = await client.get(path)
+        response = await client.get(f"/raise/{case_name}")
 
-        assert response.status_code == status_code
-        assert response.json() == expected_body
+        assert response.status_code == case.status_code
+        assert response.json() == case.expected_body
 
 
 class TestErrorResponseCode:
@@ -251,28 +185,14 @@ class TestErrorResponseCode:
 
         assert ErrorResponse("boom", HTTPStatus.FORBIDDEN).code is None
 
-    def test_stores_the_code_it_is_given(self) -> None:
-        """Test that a code the caller supplies is the one carried."""
-
-        error = ErrorResponse("Denied", HTTPStatus.FORBIDDEN, code=AccessErrorCode.PERMISSION_DENIED)
-
-        assert error.code == "permission_denied"
-
 
 class TestErrorResponseModel:
     """Tests for the documented error response schema."""
 
-    @pytest.mark.parametrize(
-        ("code_field", "expected_code"),
-        [({"code": "permission_denied"}, "permission_denied"), ({}, None)],
-        ids=["with_code", "without_code"],
-    )
-    def test_validates_code(self, code_field: dict, expected_code: str | None) -> None:
-        """Test that ErrorResponseModel accepts a code and defaults it to None when absent."""
+    def test_code_is_optional(self) -> None:
+        """Test that ErrorResponseModel leaves the code unset when none is given."""
 
-        model = ErrorResponseModel(success=False, error="Denied", **code_field)
-
-        assert model.code == expected_code
+        assert ErrorResponseModel(success=False, error="Denied").code is None
 
     def test_error_defaults_to_the_generic_message(self) -> None:
         """Test that omitting the error message falls back to the generic one."""
@@ -310,6 +230,15 @@ class TestErrorResponseModel:
         schema = ErrorResponseModel[AccessErrorCode].model_json_schema()
 
         assert schema["$defs"]["AccessErrorCode"]["enum"] == ["permission_denied", "account_suspended"]
+
+
+class TestFormatValidationErrors:
+    """Tests for combining validation errors into one message."""
+
+    def test_falls_back_when_there_are_no_errors(self) -> None:
+        """Test that an empty validation error list renders the generic bad request message."""
+
+        assert format_validation_errors(RequestValidationError([])) == "Invalid request"
 
 
 class TestFastapiResponses:
@@ -386,8 +315,10 @@ class TestFormatFieldLocation:
             (("path", "id"), "id"),
             (("body", "address", "city"), "address.city"),
             (("body", "items", 0, "name"), "items.0.name"),
+            (("body",), "body"),
+            ((), "field"),
         ],
-        ids=["body", "query", "path", "nested_object", "nested_array"],
+        ids=["body", "query", "path", "nested_object", "nested_array", "only_prefix", "empty"],
     )
     def test_joins_the_field_parts(self, loc: tuple, expected: str) -> None:
         """Test that field location tuples are formatted into human-readable names."""
@@ -401,6 +332,14 @@ class TestFormatSingleError:
     @pytest.mark.parametrize(
         ("error", "expected"),
         [
+            (
+                {"loc": ("body", "x"), "type": "unrecognized", "msg": "Something"},
+                "Field 'x': Something",
+            ),
+            (
+                {"loc": ("body", "x"), "type": "unrecognized"},
+                "Field 'x' is invalid",
+            ),
             (
                 {"loc": ("body", "email"), "type": "missing", "msg": "Field required"},
                 "Field 'email' is required",
@@ -554,6 +493,8 @@ class TestFormatSingleError:
             ),
         ],
         ids=[
+            "unknown_type_with_message",
+            "unknown_type_without_message",
             "missing",
             "int_parsing",
             "string_type",

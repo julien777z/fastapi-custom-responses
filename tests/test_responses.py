@@ -12,33 +12,31 @@ from tests.conftest import SAMPLE_PAYLOAD, ValidationPayload
 class TestSuccessEnvelopes:
     """Tests for the shape of the success response envelopes."""
 
-    async def test_response_carries_only_success_and_data(self, client: AsyncClient) -> None:
-        """Test that a data-carrying response emits no fields beyond success and data."""
+    @pytest.mark.parametrize(
+        ("path", "expected_body"),
+        [
+            ("/response-with-data", {"success": True, "data": SAMPLE_PAYLOAD.model_dump()}),
+            ("/success-response", {"success": True}),
+            (
+                "/paginated-response",
+                {
+                    "success": True,
+                    "data": [SAMPLE_PAYLOAD.model_dump()],
+                    "meta": {"offset": 0, "limit": 10, "total": 1},
+                },
+            ),
+        ],
+        ids=["with_data", "payload_free", "paginated"],
+    )
+    async def test_renders_the_success_envelope(
+        self, client: AsyncClient, path: str, expected_body: dict
+    ) -> None:
+        """Test that each success envelope emits its documented body and nothing more."""
 
-        response = await client.get("/response-with-data")
+        response = await client.get(path)
 
         assert response.status_code == HTTPStatus.OK
-        assert response.json() == {"success": True, "data": SAMPLE_PAYLOAD.model_dump()}
-
-    async def test_success_response_carries_only_success(self, client: AsyncClient) -> None:
-        """Test that a payload-free response emits nothing but success."""
-
-        response = await client.get("/success-response")
-
-        assert response.status_code == HTTPStatus.OK
-        assert response.json() == {"success": True}
-
-    async def test_paginated_response_carries_data_and_meta(self, client: AsyncClient) -> None:
-        """Test that a paginated response emits its data and pagination metadata."""
-
-        response = await client.get("/paginated-response")
-
-        assert response.status_code == HTTPStatus.OK
-        assert response.json() == {
-            "success": True,
-            "data": [SAMPLE_PAYLOAD.model_dump()],
-            "meta": {"offset": 0, "limit": 10, "total": 1},
-        }
+        assert response.json() == expected_body
 
 
 class TestBuildPage:

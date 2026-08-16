@@ -13,7 +13,7 @@ class Response[T](SuperModelPydanticMixin):
     """Success response carrying a data payload."""
 
     success: bool
-    data: T | None = None
+    data: T
 
 
 class PaginationMeta(SuperModelPydanticMixin):
@@ -27,7 +27,6 @@ class PaginationMeta(SuperModelPydanticMixin):
 class PaginatedResponse[T](Response[list[T]]):
     """Paginated response model."""
 
-    data: list[T]
     meta: PaginationMeta
 
     @classmethod

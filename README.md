@@ -130,7 +130,7 @@ from fastapi_custom_responses import ErrorResponse
 raise ErrorResponse(error="Resource not found", status_code=HTTPStatus.NOT_FOUND)
 ```
 
-You can also create one from a status code alone, which maps to a default message:
+For the statuses that have a default message, create one from the status alone:
 
 ```py
 raise ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN)
@@ -146,13 +146,6 @@ Default messages for common status codes:
 | `404` | `"Resource not found"` |
 | `400` | `"Invalid request"` |
 | `500` | `"An unexpected error occurred"` |
-
-Statuses outside the table fall back to the `500` message, so pass `error` explicitly for any other status:
-
-```py
-raise ErrorResponse(error="That name is already taken", status_code=HTTPStatus.CONFLICT)
-# { "success": false, "error": "That name is already taken" }
-```
 
 ### Error Codes
 
