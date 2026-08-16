@@ -1,4 +1,4 @@
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Callable
 from enum import Enum, StrEnum
 from http import HTTPStatus
 from typing import Final
