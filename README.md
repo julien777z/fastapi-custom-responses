@@ -250,13 +250,14 @@ raise ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN, code=AccessErrorCode.
 `fastapi_responses` builds FastAPI's `responses` mapping. Give it an error code enum, a union of enums, `None` for the bare error envelope, or a success envelope:
 
 ```py
-from fastapi_custom_responses import Response, SuccessResponse, fastapi_responses
+from fastapi_custom_responses import DefaultErrorCode, Response, SuccessResponse, fastapi_responses
 
 @router.post(
     "/reports",
     responses=fastapi_responses({
         HTTPStatus.CREATED: Response[Report],
         HTTPStatus.ACCEPTED: SuccessResponse,
+        HTTPStatus.BAD_REQUEST: DefaultErrorCode,
         HTTPStatus.FORBIDDEN: AccessErrorCode,
         HTTPStatus.NOT_FOUND: None,
     }),
@@ -269,11 +270,7 @@ Each error code enum becomes its own named schema in the OpenAPI document, so ge
 "AccessErrorCode": { "type": "string", "enum": ["permission_denied", "account_suspended"], "title": "AccessErrorCode" }
 ```
 
-A status the library's own handlers also answer carries their codes too, so union `DefaultErrorCode` in to document every value that status can emit — `400` covers `validation_error` and `invalid_value`, `500` covers `internal_error`:
-
-```py
-responses=fastapi_responses({HTTPStatus.BAD_REQUEST: OrderErrorCode | DefaultErrorCode})
-```
+`400` and `500` are answered by the library's own handlers, so document `DefaultErrorCode` there. Where a status carries your codes as well as theirs, union the two — `AccessErrorCode | DefaultErrorCode` — so the schema lists every value that status can emit.
 
 The statuses with default messages are described with the library's own message; the rest keep FastAPI's status phrase. Entries needing `headers`, custom media types, or `links` are written directly and merge with the result:
 
