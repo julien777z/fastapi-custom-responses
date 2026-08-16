@@ -73,7 +73,7 @@ class ErrorResponse(Exception):
 
         self.error = error
         self.status_code = status_code
-        self.code = code or STATUS_ERROR_CODES.get(status_code)
+        self.code: str | None = code if code is not None else STATUS_ERROR_CODES.get(status_code)
 
         super().__init__(error)
 

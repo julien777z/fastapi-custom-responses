@@ -316,10 +316,16 @@ class TestStatusErrorCodes:
         assert STATUS_ERROR_CODES.get(499) is None
 
     def test_success_statuses_have_no_code(self) -> None:
-        """Test that only error statuses derive codes."""
+        """Test that only error statuses carry codes."""
 
-        assert STATUS_ERROR_CODES.get(HTTPStatus.OK) is None
         assert all(status >= HTTPStatus.BAD_REQUEST for status in STATUS_ERROR_CODES)
+
+    def test_covers_every_error_status(self) -> None:
+        """Test that every error status the interpreter knows carries a code."""
+
+        error_statuses = {status for status in HTTPStatus if status >= HTTPStatus.BAD_REQUEST}
+
+        assert error_statuses <= set(STATUS_ERROR_CODES)
 
 
 class TestFastapiResponses:
