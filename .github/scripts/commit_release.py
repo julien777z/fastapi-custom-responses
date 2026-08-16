@@ -10,9 +10,16 @@ def main() -> None:
     arguments = parser.parse_args()
 
     commands = (
-        ("config", "user.name", "github-actions"),
-        ("config", "user.email", "github-actions@github.com"),
-        ("commit", "pyproject.toml", "-m", f"chore(release): bump version to {arguments.version}"),
+        (
+            "-c",
+            "user.name=github-actions",
+            "-c",
+            "user.email=github-actions@github.com",
+            "commit",
+            "pyproject.toml",
+            "-m",
+            f"chore(release): bump version to {arguments.version}",
+        ),
         ("tag", arguments.version),
         ("push", "--atomic", "origin", "HEAD", f"refs/tags/{arguments.version}"),
     )
