@@ -6,7 +6,9 @@ def main() -> None:
     """Commit the version bump, tag it, and push both to the current branch."""
 
     parser = argparse.ArgumentParser()
+
     parser.add_argument("version")
+
     arguments = parser.parse_args()
 
     commands = (

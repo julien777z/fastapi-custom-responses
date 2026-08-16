@@ -8,12 +8,14 @@ def main() -> None:
     """Bump the project version and publish the new value as a step output."""
 
     parser = argparse.ArgumentParser()
+
     parser.add_argument("increment", choices=("patch", "minor", "major"))
+
     arguments = parser.parse_args()
 
     completed = subprocess.run(
         ["poetry", "version", "--short", arguments.increment],
-        capture_output=True,
+        stdout=subprocess.PIPE,
         check=True,
         text=True,
     )

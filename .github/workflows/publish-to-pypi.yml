@@ -39,11 +39,11 @@ jobs:
         id: bump
         run: python .github/scripts/bump_version.py "${{ github.event.inputs.version_increment }}"
 
-      - name: Commit, tag, and push the version bump
-        run: python .github/scripts/commit_release.py "${{ steps.bump.outputs.new }}"
-
       - name: Build package
         run: poetry build
+
+      - name: Commit, tag, and push the version bump
+        run: python .github/scripts/commit_release.py "${{ steps.bump.outputs.new }}"
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
