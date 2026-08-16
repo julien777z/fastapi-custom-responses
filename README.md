@@ -6,11 +6,11 @@ Provides normalized response objects and error handling for FastAPI applications
 
 - One error envelope for every failure: validation, `HTTPException`, `ValueError`, and unhandled exceptions.
 - Pydantic validation errors rewritten as human-readable messages instead of raw error arrays.
-- A stable `code` on every error, typed as an enum you define.
+- A stable `code` naming the condition, typed as an enum you define.
 - `fastapi_responses` to build FastAPI's `responses` mapping, documenting your codes in OpenAPI.
 - Generic `Response[T]`, `SuccessResponse`, and `PaginatedResponse[T]` envelopes for success payloads.
 - `ErrorResponseModel` for documenting error responses in OpenAPI.
-- Default messages and codes for common status codes via `ErrorResponse.from_status_code`.
+- Default messages for common status codes via `ErrorResponse.from_status_code`.
 
 ## Installation
 
@@ -111,11 +111,13 @@ Every error then normalizes into one JSON shape:
 
 | Exception | Status Code | Code | Behavior |
 |-----------|-------------|------|----------|
-| `ErrorResponse` | Custom (default `400`) | Yours, else from the status | Uses the provided `error` message directly |
+| `ErrorResponse` | Custom (default `400`) | Yours, if you pass one | Uses the provided `error` message directly |
 | `RequestValidationError` | `400` | `validation_error` | Pydantic validation errors are converted to human-readable messages (see below) |
-| `HTTPException` | From exception | From the status | Uses the exception `detail` as the error message |
+| `HTTPException` | From exception | None | Uses the exception `detail` as the error message |
 | `ValueError` | `400` | `invalid_value` | Uses `str(exc)` as the error message |
-| `Exception` (catch-all) | `500` | `internal_server_error` | Returns a generic `"An unexpected error occurred"` message |
+| `Exception` (catch-all) | `500` | `internal_error` | Returns a generic `"An unexpected error occurred"` message |
+
+`code` is present when a condition was named — by you, or by one of the library's own handlers. It is absent otherwise, rather than restating the status.
 
 ### Raising Errors
 
@@ -132,25 +134,24 @@ You can also create one from a status code alone, which maps to a default messag
 
 ```py
 raise ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN)
-# { "success": false, "error": "You don't have permission to perform this action", "code": "forbidden" }
+# { "success": false, "error": "You don't have permission to perform this action" }
 ```
 
-Default messages and codes for common status codes:
+Default messages for common status codes:
 
-| Status Code | Default Message | Default Code |
-|-------------|-----------------|--------------|
-| `401` | `"Authentication required"` | `unauthorized` |
-| `403` | `"You don't have permission to perform this action"` | `forbidden` |
-| `404` | `"Resource not found"` | `not_found` |
-| `400` | `"Invalid request"` | `bad_request` |
-| `500` | `"An unexpected error occurred"` | `internal_server_error` |
+| Status Code | Default Message |
+|-------------|-----------------|
+| `401` | `"Authentication required"` |
+| `403` | `"You don't have permission to perform this action"` |
+| `404` | `"Resource not found"` |
+| `400` | `"Invalid request"` |
+| `500` | `"An unexpected error occurred"` |
 
-Default codes are derived from the status name, so every standard error status has one. Statuses outside
-the table above fall back to the `500` message, so pass `error` explicitly for any other status:
+Statuses outside the table fall back to the `500` message, so pass `error` explicitly for any other status:
 
 ```py
 raise ErrorResponse(error="That name is already taken", status_code=HTTPStatus.CONFLICT)
-# { "success": false, "error": "That name is already taken", "code": "conflict" }
+# { "success": false, "error": "That name is already taken" }
 ```
 
 ### Error Codes
@@ -178,13 +179,6 @@ raise ErrorResponse(
 # { "success": false, "error": "Your account is suspended", "code": "account_suspended" }
 
 raise ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN, code=AccessErrorCode.PERMISSION_DENIED)
-```
-
-Omit the code and it falls back to the status name, so every error response carries one:
-
-```py
-raise ErrorResponse(error="Item not found", status_code=HTTPStatus.NOT_FOUND)
-# { "success": false, "error": "Item not found", "code": "not_found" }
 ```
 
 ### Validation Error Normalization
@@ -270,8 +264,6 @@ Each error code enum becomes its own named schema in the OpenAPI document, so ge
 ```json
 "AccessErrorCode": { "type": "string", "enum": ["permission_denied", "account_suspended"], "title": "AccessErrorCode" }
 ```
-
-The code a status falls back to is documented alongside, so the schema covers every value the endpoint can emit.
 
 The statuses with default messages are described with the library's own message; the rest keep FastAPI's status phrase. Entries needing `headers`, custom media types, or `links` are written directly and merge with the result:
 

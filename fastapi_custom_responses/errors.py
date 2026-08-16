@@ -2,7 +2,7 @@ import logging
 from collections.abc import Callable
 from enum import StrEnum
 from http import HTTPStatus
-from typing import Any, Final, Literal, Self
+from typing import Any, Final, Self
 
 from fastapi import HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -17,10 +17,6 @@ ERROR_MESSAGES: Final[dict[int, str]] = {
     HTTPStatus.NOT_FOUND: "Resource not found",
     HTTPStatus.BAD_REQUEST: "Invalid request",
     HTTPStatus.INTERNAL_SERVER_ERROR: "An unexpected error occurred",
-}
-
-STATUS_ERROR_CODES: Final[dict[int, str]] = {
-    status: status.name.lower() for status in HTTPStatus if status >= HTTPStatus.BAD_REQUEST
 }
 
 SIMPLE_TYPE_MESSAGES: Final[dict[str, str]] = {
@@ -41,10 +37,11 @@ type ResponseSpec = type[StrEnum] | type[BaseModel]
 
 
 class DefaultErrorCode(StrEnum):
-    """Codes for conditions the library detects that no HTTP status names."""
+    """Codes for the conditions the library's own handlers detect."""
 
     VALIDATION_ERROR = "validation_error"
     INVALID_VALUE = "invalid_value"
+    INTERNAL_ERROR = "internal_error"
 
 
 class ErrorResponseModel[CodeT: str](BaseModel):
@@ -69,7 +66,7 @@ class ErrorResponse(Exception):
 
         self.error = error
         self.status_code = status_code
-        self.code: str | None = code if code is not None else STATUS_ERROR_CODES.get(status_code)
+        self.code = code
 
         super().__init__(error)
 
@@ -244,7 +241,7 @@ def general_exception_handler(_: Request, exc: Exception) -> JSONResponse:
     return error_json_response(
         HTTPStatus.INTERNAL_SERVER_ERROR,
         ERROR_MESSAGES[HTTPStatus.INTERNAL_SERVER_ERROR],
-        STATUS_ERROR_CODES[HTTPStatus.INTERNAL_SERVER_ERROR],
+        DefaultErrorCode.INTERNAL_ERROR,
     )
 
 
@@ -253,7 +250,7 @@ def http_exception_handler(_: Request, exc: HTTPException) -> JSONResponse:
 
     error_message = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
 
-    return error_json_response(exc.status_code, error_message, STATUS_ERROR_CODES.get(exc.status_code))
+    return error_json_response(exc.status_code, error_message, None)
 
 
 def response_entry(status_code: HTTPStatus, spec: ResponseSpec | None) -> dict[str, Any]:
@@ -262,14 +259,7 @@ def response_entry(status_code: HTTPStatus, spec: ResponseSpec | None) -> dict[s
     if spec is not None and issubclass(spec, BaseModel):
         return {"model": spec}
 
-    status_code_default = STATUS_ERROR_CODES.get(status_code)
-
-    if spec is None:
-        model = ErrorResponseModel
-    elif status_code_default is None:
-        model = ErrorResponseModel[spec]
-    else:
-        model = ErrorResponseModel[spec | Literal[status_code_default]]
+    model = ErrorResponseModel if spec is None else ErrorResponseModel[spec]
 
     return {"model": model, "description": ERROR_MESSAGES.get(status_code, status_code.phrase)}
 

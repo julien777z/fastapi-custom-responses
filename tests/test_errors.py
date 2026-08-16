@@ -1,6 +1,5 @@
 from http import HTTPStatus
 from inspect import Parameter, signature
-from typing import Literal
 
 import pytest
 from fastapi import FastAPI
@@ -13,11 +12,7 @@ from fastapi_custom_responses import (
     SuccessResponse,
     fastapi_responses,
 )
-from fastapi_custom_responses.errors import (
-    STATUS_ERROR_CODES,
-    format_field_location,
-    format_single_error,
-)
+from fastapi_custom_responses.errors import format_field_location, format_single_error
 from tests.conftest import VALID_CONSTRAINED_PAYLOAD, AccessErrorCode, StandaloneErrorCode
 
 
@@ -166,12 +161,12 @@ class TestErrorEnvelope:
             (
                 "/error-response",
                 HTTPStatus.BAD_REQUEST,
-                {"success": False, "error": "Custom error message", "code": "bad_request"},
+                {"success": False, "error": "Custom error message"},
             ),
             (
                 "/error-response-not-found",
                 HTTPStatus.NOT_FOUND,
-                {"success": False, "error": "Item not found", "code": "not_found"},
+                {"success": False, "error": "Item not found"},
             ),
             (
                 "/error-response-from-status",
@@ -179,7 +174,6 @@ class TestErrorEnvelope:
                 {
                     "success": False,
                     "error": "You don't have permission to perform this action",
-                    "code": "forbidden",
                 },
             ),
             (
@@ -199,12 +193,12 @@ class TestErrorEnvelope:
             (
                 "/http-exception",
                 HTTPStatus.UNAUTHORIZED,
-                {"success": False, "error": "Not authenticated", "code": "unauthorized"},
+                {"success": False, "error": "Not authenticated"},
             ),
             (
                 "/http-exception-unusual-status",
                 HTTPStatus.IM_A_TEAPOT,
-                {"success": False, "error": "I'm a teapot", "code": "im_a_teapot"},
+                {"success": False, "error": "I'm a teapot"},
             ),
             (
                 "/value-error",
@@ -217,7 +211,7 @@ class TestErrorEnvelope:
                 {
                     "success": False,
                     "error": "An unexpected error occurred",
-                    "code": "internal_server_error",
+                    "code": "internal_error",
                 },
             ),
         ],
@@ -315,44 +309,6 @@ class TestErrorResponseModel:
         assert schema["$defs"]["AccessErrorCode"]["enum"] == ["permission_denied", "account_suspended"]
 
 
-class TestStatusErrorCodes:
-    """Tests for codes derived from HTTP statuses."""
-
-    @pytest.mark.parametrize(
-        ("status_code", "expected_code"),
-        [
-            (HTTPStatus.UNAUTHORIZED, "unauthorized"),
-            (HTTPStatus.FORBIDDEN, "forbidden"),
-            (HTTPStatus.NOT_FOUND, "not_found"),
-            (HTTPStatus.BAD_REQUEST, "bad_request"),
-            (HTTPStatus.INTERNAL_SERVER_ERROR, "internal_server_error"),
-            (HTTPStatus.IM_A_TEAPOT, "im_a_teapot"),
-        ],
-        ids=["unauthorized", "forbidden", "not_found", "bad_request", "internal", "unusual"],
-    )
-    def test_derives_code_from_status(self, status_code: HTTPStatus, expected_code: str) -> None:
-        """Test that an error status derives its code from the status name."""
-
-        assert STATUS_ERROR_CODES.get(status_code) == expected_code
-
-    def test_non_standard_status_has_no_code(self) -> None:
-        """Test that a status outside HTTPStatus derives no code."""
-
-        assert STATUS_ERROR_CODES.get(499) is None
-
-    def test_success_statuses_have_no_code(self) -> None:
-        """Test that only error statuses carry codes."""
-
-        assert all(status >= HTTPStatus.BAD_REQUEST for status in STATUS_ERROR_CODES)
-
-    def test_covers_every_error_status(self) -> None:
-        """Test that every error status the interpreter knows carries a code."""
-
-        error_statuses = {status for status in HTTPStatus if status >= HTTPStatus.BAD_REQUEST}
-
-        assert error_statuses <= set(STATUS_ERROR_CODES)
-
-
 class TestFastapiResponses:
     """Tests for the FastAPI responses mapping helper."""
 
@@ -362,7 +318,7 @@ class TestFastapiResponses:
         responses = fastapi_responses({HTTPStatus.FORBIDDEN: AccessErrorCode})
 
         assert responses[HTTPStatus.FORBIDDEN] == {
-            "model": ErrorResponseModel[AccessErrorCode | Literal["forbidden"]],
+            "model": ErrorResponseModel[AccessErrorCode],
             "description": "You don't have permission to perform this action",
         }
 
@@ -381,18 +337,7 @@ class TestFastapiResponses:
 
         responses = fastapi_responses({HTTPStatus.FORBIDDEN: StandaloneErrorCode})
 
-        assert (
-            responses[HTTPStatus.FORBIDDEN]["model"]
-            is ErrorResponseModel[StandaloneErrorCode | Literal["forbidden"]]
-        )
-
-    def test_documents_the_code_the_status_defaults_to(self) -> None:
-        """Test that the code an unnamed error falls back to is documented beside the enum."""
-
-        responses = fastapi_responses({HTTPStatus.FORBIDDEN: AccessErrorCode})
-        code = responses[HTTPStatus.FORBIDDEN]["model"].model_json_schema()["properties"]["code"]
-
-        assert {"type": "string", "const": "forbidden"} in code["anyOf"]
+        assert responses[HTTPStatus.FORBIDDEN]["model"] is ErrorResponseModel[StandaloneErrorCode]
 
     def test_success_model_is_passed_through(self) -> None:
         """Test that a success envelope is documented as given, leaving its description to FastAPI."""
@@ -430,7 +375,6 @@ class TestOpenApiSchema:
 
         assert schemas[envelope]["properties"]["code"]["anyOf"] == [
             {"$ref": "#/components/schemas/AccessErrorCode"},
-            {"type": "string", "const": "forbidden"},
             {"type": "null"},
         ]
 
