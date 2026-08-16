@@ -25,12 +25,6 @@ class AccessErrorCode(StrEnum):
     ACCOUNT_SUSPENDED = "account_suspended"
 
 
-class StandaloneErrorCode(StrEnum):
-    """Error codes declared without the library's base, as a consumer that cannot import it would."""
-
-    MEMBERSHIP_REQUIRED = "membership_required"
-
-
 class ValidationPayload(BaseModel):
     """Test model for validation error tests."""
 

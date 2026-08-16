@@ -166,7 +166,7 @@ class AccessErrorCode(StrEnum):
     ACCOUNT_SUSPENDED = "account_suspended"
 ```
 
-The library emits its own codes for conditions no status names; import `DefaultErrorCode` to branch on `validation_error` and `invalid_value`.
+The library's own handlers name their conditions too; import `DefaultErrorCode` to branch on `validation_error`, `invalid_value`, and `internal_error`.
 
 Pass a member when raising; both `ErrorResponse` and `from_status_code` accept it:
 

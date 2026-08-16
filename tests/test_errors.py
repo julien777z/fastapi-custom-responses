@@ -13,7 +13,7 @@ from fastapi_custom_responses import (
     fastapi_responses,
 )
 from fastapi_custom_responses.errors import format_field_location, format_single_error
-from tests.conftest import VALID_CONSTRAINED_PAYLOAD, AccessErrorCode, StandaloneErrorCode
+from tests.conftest import VALID_CONSTRAINED_PAYLOAD, AccessErrorCode
 
 
 class TestValidationErrors:
@@ -246,14 +246,17 @@ class TestErrorResponseCode:
 
         assert signature(ErrorResponse).parameters["code"].kind is Parameter.KEYWORD_ONLY
 
-    def test_accepts_a_code_declared_without_the_library_base(self) -> None:
-        """Test that a code enum from a consumer that never imports the base is accepted."""
+    def test_an_unnamed_error_carries_no_code(self) -> None:
+        """Test that an error raised without a code carries none rather than restating its status."""
 
-        error = ErrorResponse(
-            "Not a member", HTTPStatus.FORBIDDEN, code=StandaloneErrorCode.MEMBERSHIP_REQUIRED
-        )
+        assert ErrorResponse("boom", HTTPStatus.FORBIDDEN).code is None
 
-        assert error.code == "membership_required"
+    def test_stores_the_code_it_is_given(self) -> None:
+        """Test that a code the caller supplies is the one carried."""
+
+        error = ErrorResponse("Denied", HTTPStatus.FORBIDDEN, code=AccessErrorCode.PERMISSION_DENIED)
+
+        assert error.code == "permission_denied"
 
 
 class TestErrorResponseModel:
@@ -331,13 +334,6 @@ class TestFastapiResponses:
             "model": ErrorResponseModel,
             "description": "Resource not found",
         }
-
-    def test_code_enum_without_the_library_base_is_parametrized(self) -> None:
-        """Test that a code enum owned by a consumer that never imports the base still documents."""
-
-        responses = fastapi_responses({HTTPStatus.FORBIDDEN: StandaloneErrorCode})
-
-        assert responses[HTTPStatus.FORBIDDEN]["model"] is ErrorResponseModel[StandaloneErrorCode]
 
     def test_success_model_is_passed_through(self) -> None:
         """Test that a success envelope is documented as given, leaving its description to FastAPI."""
