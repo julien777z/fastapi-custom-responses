@@ -1,6 +1,7 @@
-import asyncio
+from collections.abc import AsyncIterator, Awaitable, Callable
 from enum import Enum, StrEnum
 from http import HTTPStatus
+from typing import Final
 
 import pytest
 from fastapi import FastAPI, HTTPException
@@ -14,6 +15,7 @@ from fastapi_custom_responses import (
     PaginatedResponse,
     Response,
     SuccessResponse,
+    fastapi_responses,
 )
 
 
@@ -75,6 +77,41 @@ class ValueErrorPayload(BaseModel):
         return v
 
 
+RAISED_ERRORS: Final[dict[str, Exception]] = {
+    "/error-response": ErrorResponse(error="Custom error message", status_code=HTTPStatus.BAD_REQUEST),
+    "/error-response-not-found": ErrorResponse(error="Item not found", status_code=HTTPStatus.NOT_FOUND),
+    "/error-response-with-code": ErrorResponse(
+        error="Custom error message",
+        status_code=HTTPStatus.FORBIDDEN,
+        code=AccessErrorCode.PERMISSION_DENIED,
+    ),
+    "/error-response-from-status": ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN),
+    "/error-response-from-status-with-code": ErrorResponse.from_status_code(
+        HTTPStatus.FORBIDDEN, code=AccessErrorCode.PERMISSION_DENIED
+    ),
+    "/http-exception": HTTPException(status_code=HTTPStatus.UNAUTHORIZED, detail="Not authenticated"),
+    "/http-exception-unusual-status": HTTPException(
+        status_code=HTTPStatus.IM_A_TEAPOT, detail="I'm a teapot"
+    ),
+    "/value-error": ValueError("Invalid value provided"),
+    "/general-exception": RuntimeError("Something went wrong"),
+}
+
+
+def raise_error_endpoint(error: Exception) -> Callable[[], Awaitable[None]]:
+    """Build an endpoint that raises the given error."""
+
+    async def _raise_error() -> None:
+        raise error
+
+    return _raise_error
+
+
+VALID_CONSTRAINED_PAYLOAD = ConstrainedPayload(
+    username="alice", score=50, rating=2.5, color=Color.RED, tags=["a"]
+)
+
+
 def create_test_app() -> FastAPI:
     """Create a minimal FastAPI app with exception handlers for testing."""
 
@@ -104,47 +141,38 @@ def create_test_app() -> FastAPI:
     async def paginated_response_endpoint() -> PaginatedResponse[ValidationPayload]:
         return PaginatedResponse.build_page([SAMPLE_PAYLOAD], offset=0, limit=10, total=1)
 
-    @app.get("/error-response")
-    async def error_response_endpoint() -> dict:
-        raise ErrorResponse(error="Custom error message", status_code=HTTPStatus.BAD_REQUEST)
-
-    @app.get("/error-response-not-found")
-    async def error_response_not_found_endpoint() -> dict:
-        raise ErrorResponse(error="Item not found", status_code=HTTPStatus.NOT_FOUND)
-
-    @app.get("/error-response-with-code")
-    async def error_response_with_code_endpoint() -> dict:
-        raise ErrorResponse(
-            error="Custom error message",
-            status_code=HTTPStatus.FORBIDDEN,
-            code=AccessErrorCode.PERMISSION_DENIED,
-        )
-
-    @app.get("/error-response-from-status")
-    async def error_response_from_status_endpoint() -> dict:
-        raise ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN)
-
-    @app.get("/error-response-from-status-with-code")
-    async def error_response_from_status_with_code_endpoint() -> dict:
-        raise ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN, code=AccessErrorCode.PERMISSION_DENIED)
-
-    @app.get("/http-exception")
-    async def http_exception_endpoint() -> dict:
-        raise HTTPException(status_code=HTTPStatus.UNAUTHORIZED, detail="Not authenticated")
-
-    @app.get("/http-exception-unusual-status")
-    async def http_exception_unusual_status_endpoint() -> dict:
-        raise HTTPException(status_code=HTTPStatus.IM_A_TEAPOT, detail="I'm a teapot")
-
-    @app.get("/value-error")
-    async def value_error_endpoint() -> dict:
-        raise ValueError("Invalid value provided")
-
-    @app.get("/general-exception")
-    async def general_exception_endpoint() -> dict:
-        raise RuntimeError("Something went wrong")
+    for path, error in RAISED_ERRORS.items():
+        app.get(path)(raise_error_endpoint(error))
 
     return app
+
+
+def create_documented_app() -> FastAPI:
+    """Create an app whose routes document their responses, for OpenAPI assertions."""
+
+    app = FastAPI()
+
+    @app.post(
+        "/reports",
+        responses=fastapi_responses(
+            {
+                HTTPStatus.CREATED: Response[ValidationPayload],
+                HTTPStatus.FORBIDDEN: AccessErrorCode,
+                HTTPStatus.NOT_FOUND: None,
+            }
+        ),
+    )
+    async def reports() -> SuccessResponse:
+        return SuccessResponse(success=True)
+
+    return app
+
+
+@pytest.fixture
+def documented_app() -> FastAPI:
+    """App whose routes document their responses."""
+
+    return create_documented_app()
 
 
 @pytest.fixture
@@ -154,19 +182,11 @@ def app() -> FastAPI:
     return create_test_app()
 
 
-@pytest.fixture(autouse=True)
-async def client(request, app: FastAPI) -> AsyncClient | None:
-    """Async HTTP client fixture that auto-injects into test classes."""
-
-    # Skip for sync tests
-    if not asyncio.iscoroutinefunction(request.node.obj):
-        yield None
-        return
+@pytest.fixture
+async def client(app: FastAPI) -> AsyncIterator[AsyncClient]:
+    """Async HTTP client bound to the test app."""
 
     transport = ASGITransport(app=app, raise_app_exceptions=False)
 
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        if request.instance is not None:
-            request.instance.client = client
-
         yield client

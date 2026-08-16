@@ -9,7 +9,6 @@ from pydantic import ValidationError
 from fastapi_custom_responses import (
     ErrorResponse,
     ErrorResponseModel,
-    Response,
     SuccessResponse,
     fastapi_responses,
 )
@@ -18,26 +17,16 @@ from fastapi_custom_responses.errors import (
     format_field_location,
     format_single_error,
 )
-from tests.conftest import AccessErrorCode, StandaloneErrorCode, ValidationPayload
-
-VALID_CONSTRAINED_PAYLOAD: dict = {
-    "username": "alice",
-    "score": 50,
-    "rating": 2.5,
-    "color": "red",
-    "tags": ["a"],
-}
+from tests.conftest import VALID_CONSTRAINED_PAYLOAD, AccessErrorCode, StandaloneErrorCode
 
 
 class TestValidationErrors:
     """Tests for Pydantic validation error handling."""
 
-    client: AsyncClient
-
-    async def test_validation_error_missing_field(self) -> None:
+    async def test_validation_error_missing_field(self, client: AsyncClient) -> None:
         """Test that POST with missing required field returns 400 with human-readable message."""
 
-        response = await self.client.post("/validate", json={"name": "John", "age": 30})
+        response = await client.post("/validate", json={"name": "John", "age": 30})
 
         assert response.status_code == HTTPStatus.BAD_REQUEST
         assert response.json() == {
@@ -46,33 +35,36 @@ class TestValidationErrors:
             "code": "validation_error",
         }
 
-    async def test_validation_error_wrong_type(self) -> None:
+    async def test_validation_error_wrong_type(self, client: AsyncClient) -> None:
         """Test that POST with wrong type returns 400 with human-readable message."""
 
-        response = await self.client.post(
+        response = await client.post(
             "/validate", json={"name": "John", "age": "not-a-number", "email": "test@example.com"}
         )
 
         assert response.status_code == HTTPStatus.BAD_REQUEST
-        data = response.json()
-        assert data["success"] is False
-        assert "age" in data["error"]
-        assert "integer" in data["error"]
+        assert response.json() == {
+            "success": False,
+            "error": "Field 'age' must be a valid integer",
+            "code": "validation_error",
+        }
 
-    async def test_validation_error_multiple_errors(self) -> None:
+    async def test_validation_error_multiple_errors(self, client: AsyncClient) -> None:
         """Test that POST with multiple errors returns combined message."""
 
-        response = await self.client.post("/validate", json={"name": 123})
+        response = await client.post("/validate", json={"name": 123})
 
         assert response.status_code == HTTPStatus.BAD_REQUEST
-        data = response.json()
-        assert data["success"] is False
-        assert "age" in data["error"] or "email" in data["error"]
+        assert response.json() == {
+            "success": False,
+            "error": ("Field 'name' must be a string. Field 'age' is required. Field 'email' is required"),
+            "code": "validation_error",
+        }
 
-    async def test_validation_error_invalid_json(self) -> None:
+    async def test_validation_error_invalid_json(self, client: AsyncClient) -> None:
         """Test that POST with invalid JSON returns 400."""
 
-        response = await self.client.post(
+        response = await client.post(
             "/validate", content="not valid json", headers={"Content-Type": "application/json"}
         )
 
@@ -80,10 +72,10 @@ class TestValidationErrors:
         data = response.json()
         assert data["success"] is False
 
-    async def test_valid_request_succeeds(self) -> None:
+    async def test_valid_request_succeeds(self, client: AsyncClient) -> None:
         """Test that valid request succeeds."""
 
-        response = await self.client.post(
+        response = await client.post(
             "/validate", json={"name": "John", "age": 30, "email": "john@example.com"}
         )
 
@@ -94,8 +86,6 @@ class TestValidationErrors:
 
 class TestConstrainedValidationErrors:
     """Tests for constraint-aware validation error messages."""
-
-    client: AsyncClient
 
     @pytest.mark.parametrize(
         ("payload_override", "expected_error"),
@@ -120,102 +110,137 @@ class TestConstrainedValidationErrors:
             "list_too_long",
         ],
     )
-    async def test_constrained_field_error(self, payload_override: dict, expected_error: str) -> None:
+    async def test_constrained_field_error(
+        self, client: AsyncClient, payload_override: dict, expected_error: str
+    ) -> None:
         """Test that constrained field violations produce specific error messages."""
 
-        payload = {**VALID_CONSTRAINED_PAYLOAD, **payload_override}
-        response = await self.client.post("/validate-constrained", json=payload)
+        payload = {**VALID_CONSTRAINED_PAYLOAD.model_dump(mode="json"), **payload_override}
+        response = await client.post("/validate-constrained", json=payload)
 
         assert response.status_code == HTTPStatus.BAD_REQUEST
         data = response.json()
         assert data["error"] == expected_error
 
-    async def test_enum_includes_expected_values(self) -> None:
+    async def test_enum_includes_expected_values(self, client: AsyncClient) -> None:
         """Test that enum error includes the allowed values."""
 
-        payload = {**VALID_CONSTRAINED_PAYLOAD, "color": "purple"}
-        response = await self.client.post("/validate-constrained", json=payload)
+        payload = {**VALID_CONSTRAINED_PAYLOAD.model_dump(mode="json"), "color": "purple"}
+        response = await client.post("/validate-constrained", json=payload)
 
         assert response.status_code == HTTPStatus.BAD_REQUEST
-        data = response.json()
-        assert "color" in data["error"]
-        assert "must be one of" in data["error"]
+        assert response.json() == {
+            "success": False,
+            "error": "Field 'color' must be one of: 'red', 'green' or 'blue'",
+            "code": "validation_error",
+        }
 
-    async def test_value_error_strips_pydantic_prefix(self) -> None:
+    async def test_value_error_strips_pydantic_prefix(self, client: AsyncClient) -> None:
         """Test that value_error strips the 'Value error, ' prefix Pydantic adds."""
 
-        response = await self.client.post("/validate-value-error", json={"code": "abc"})
+        response = await client.post("/validate-value-error", json={"code": "abc"})
 
         assert response.status_code == HTTPStatus.BAD_REQUEST
         data = response.json()
         assert data["error"] == "Code must be exactly 4 digits"
 
-    async def test_valid_constrained_request_succeeds(self) -> None:
+    async def test_valid_constrained_request_succeeds(self, client: AsyncClient) -> None:
         """Test that a valid request with all constraints met succeeds."""
 
-        response = await self.client.post("/validate-constrained", json=VALID_CONSTRAINED_PAYLOAD)
+        response = await client.post(
+            "/validate-constrained", json=VALID_CONSTRAINED_PAYLOAD.model_dump(mode="json")
+        )
 
         assert response.status_code == HTTPStatus.OK
         data = response.json()
         assert data["success"] is True
 
 
-class TestErrorResponse:
-    """Tests for ErrorResponse exception handling."""
+class TestErrorEnvelope:
+    """Tests for the envelope every failing path renders."""
 
-    client: AsyncClient
+    @pytest.mark.parametrize(
+        ("path", "status_code", "expected_body"),
+        [
+            (
+                "/error-response",
+                HTTPStatus.BAD_REQUEST,
+                {"success": False, "error": "Custom error message", "code": "bad_request"},
+            ),
+            (
+                "/error-response-not-found",
+                HTTPStatus.NOT_FOUND,
+                {"success": False, "error": "Item not found", "code": "not_found"},
+            ),
+            (
+                "/error-response-from-status",
+                HTTPStatus.FORBIDDEN,
+                {
+                    "success": False,
+                    "error": "You don't have permission to perform this action",
+                    "code": "forbidden",
+                },
+            ),
+            (
+                "/error-response-with-code",
+                HTTPStatus.FORBIDDEN,
+                {"success": False, "error": "Custom error message", "code": "permission_denied"},
+            ),
+            (
+                "/error-response-from-status-with-code",
+                HTTPStatus.FORBIDDEN,
+                {
+                    "success": False,
+                    "error": "You don't have permission to perform this action",
+                    "code": "permission_denied",
+                },
+            ),
+            (
+                "/http-exception",
+                HTTPStatus.UNAUTHORIZED,
+                {"success": False, "error": "Not authenticated", "code": "unauthorized"},
+            ),
+            (
+                "/http-exception-unusual-status",
+                HTTPStatus.IM_A_TEAPOT,
+                {"success": False, "error": "I'm a teapot", "code": "im_a_teapot"},
+            ),
+            (
+                "/value-error",
+                HTTPStatus.BAD_REQUEST,
+                {"success": False, "error": "Invalid value provided", "code": "invalid_value"},
+            ),
+            (
+                "/general-exception",
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                {
+                    "success": False,
+                    "error": "An unexpected error occurred",
+                    "code": "internal_server_error",
+                },
+            ),
+        ],
+        ids=[
+            "custom_message",
+            "custom_status",
+            "from_status_code",
+            "with_code",
+            "from_status_code_with_code",
+            "http_exception",
+            "http_exception_unusual_status",
+            "value_error",
+            "general_exception",
+        ],
+    )
+    async def test_renders_the_error_envelope(
+        self, client: AsyncClient, path: str, status_code: HTTPStatus, expected_body: dict
+    ) -> None:
+        """Test that each failing path renders the envelope with its status and code."""
 
-    async def test_error_response_custom_message(self) -> None:
-        """Test that raising ErrorResponse returns custom message."""
+        response = await client.get(path)
 
-        response = await self.client.get("/error-response")
-
-        assert response.status_code == HTTPStatus.BAD_REQUEST
-        assert response.json() == {"success": False, "error": "Custom error message", "code": "bad_request"}
-
-    async def test_error_response_custom_status_code(self) -> None:
-        """Test that ErrorResponse can use different status codes."""
-
-        response = await self.client.get("/error-response-not-found")
-
-        assert response.status_code == HTTPStatus.NOT_FOUND
-        assert response.json() == {"success": False, "error": "Item not found", "code": "not_found"}
-
-    async def test_error_response_from_status_code(self) -> None:
-        """Test that ErrorResponse.from_status_code() uses predefined messages."""
-
-        response = await self.client.get("/error-response-from-status")
-
-        assert response.status_code == HTTPStatus.FORBIDDEN
-        assert response.json() == {
-            "success": False,
-            "error": "You don't have permission to perform this action",
-            "code": "forbidden",
-        }
-
-    async def test_error_response_with_code(self) -> None:
-        """Test that ErrorResponse with a code emits that code in the envelope."""
-
-        response = await self.client.get("/error-response-with-code")
-
-        assert response.status_code == HTTPStatus.FORBIDDEN
-        assert response.json() == {
-            "success": False,
-            "error": "Custom error message",
-            "code": "permission_denied",
-        }
-
-    async def test_error_response_from_status_code_with_code(self) -> None:
-        """Test that from_status_code() forwards the code into the envelope."""
-
-        response = await self.client.get("/error-response-from-status-with-code")
-
-        assert response.status_code == HTTPStatus.FORBIDDEN
-        assert response.json() == {
-            "success": False,
-            "error": "You don't have permission to perform this action",
-            "code": "permission_denied",
-        }
+        assert response.status_code == status_code
+        assert response.json() == expected_body
 
 
 class TestErrorResponseCode:
@@ -364,36 +389,24 @@ class TestFastapiResponses:
 
         assert responses[HTTPStatus.ACCEPTED] == {"model": SuccessResponse}
 
-    def test_status_without_a_message_omits_the_description(self) -> None:
-        """Test that a status the library has no message for carries no description."""
+    def test_status_without_a_message_falls_back_to_its_phrase(self) -> None:
+        """Test that a status the library has no message for is described by its status phrase."""
 
         responses = fastapi_responses({HTTPStatus.IM_A_TEAPOT: None})
 
-        assert responses[HTTPStatus.IM_A_TEAPOT] == {"model": ErrorResponseModel}
+        assert responses[HTTPStatus.IM_A_TEAPOT] == {
+            "model": ErrorResponseModel,
+            "description": HTTPStatus.IM_A_TEAPOT.phrase,
+        }
 
 
 class TestOpenApiSchema:
     """Tests for the OpenAPI document the library's models produce."""
 
-    def test_documents_codes_and_envelopes_per_endpoint(self) -> None:
+    def test_documents_codes_and_envelopes_per_endpoint(self, documented_app: FastAPI) -> None:
         """Test that each code enum and envelope becomes its own named component."""
 
-        app = FastAPI()
-
-        @app.post(
-            "/reports",
-            responses=fastapi_responses(
-                {
-                    HTTPStatus.CREATED: Response[ValidationPayload],
-                    HTTPStatus.FORBIDDEN: AccessErrorCode,
-                    HTTPStatus.NOT_FOUND: None,
-                }
-            ),
-        )
-        async def reports() -> SuccessResponse:
-            return SuccessResponse(success=True)
-
-        spec = app.openapi()
+        spec = documented_app.openapi()
         schemas = spec["components"]["schemas"]
         responses = spec["paths"]["/reports"]["post"]["responses"]
 
@@ -404,69 +417,6 @@ class TestOpenApiSchema:
         forbidden = responses[str(int(HTTPStatus.FORBIDDEN))]
         assert forbidden["content"]["application/json"]["schema"] == {
             "$ref": "#/components/schemas/ErrorResponseModel_AccessErrorCode_"
-        }
-        assert forbidden["description"] == "You don't have permission to perform this action"
-
-
-class TestHTTPExceptionHandler:
-    """Tests for HTTPException handling."""
-
-    client: AsyncClient
-
-    async def test_http_exception_handler(self) -> None:
-        """Test that HTTPException is formatted correctly."""
-
-        response = await self.client.get("/http-exception")
-
-        assert response.status_code == HTTPStatus.UNAUTHORIZED
-        assert response.json() == {"success": False, "error": "Not authenticated", "code": "unauthorized"}
-
-    async def test_http_exception_unusual_status(self) -> None:
-        """Test that an unusual status still derives its own code."""
-
-        response = await self.client.get("/http-exception-unusual-status")
-
-        assert response.status_code == HTTPStatus.IM_A_TEAPOT
-        assert response.json() == {
-            "success": False,
-            "error": "I'm a teapot",
-            "code": "im_a_teapot",
-        }
-
-
-class TestValueErrorHandler:
-    """Tests for ValueError handling."""
-
-    client: AsyncClient
-
-    async def test_value_error_handler(self) -> None:
-        """Test that ValueError returns str(exc)."""
-
-        response = await self.client.get("/value-error")
-
-        assert response.status_code == HTTPStatus.BAD_REQUEST
-        assert response.json() == {
-            "success": False,
-            "error": "Invalid value provided",
-            "code": "invalid_value",
-        }
-
-
-class TestGeneralExceptionHandler:
-    """Tests for unhandled exception handling."""
-
-    client: AsyncClient
-
-    async def test_general_exception_handler(self) -> None:
-        """Test that an unhandled exception renders the generic server-error envelope."""
-
-        response = await self.client.get("/general-exception")
-
-        assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
-        assert response.json() == {
-            "success": False,
-            "error": "An unexpected error occurred",
-            "code": "internal_server_error",
         }
 
 
@@ -484,7 +434,7 @@ class TestFormatFieldLocation:
         ],
         ids=["body", "query", "path", "nested_object", "nested_array"],
     )
-    def test_format_field_location(self, loc: tuple, expected: str) -> None:
+    def test_joins_the_field_parts(self, loc: tuple, expected: str) -> None:
         """Test that field location tuples are formatted into human-readable names."""
 
         assert format_field_location(loc) == expected
@@ -671,7 +621,7 @@ class TestFormatSingleError:
             "comparison_without_ctx",
         ],
     )
-    def test_format_single_error(self, error: dict, expected: str) -> None:
+    def test_formats_the_message(self, error: dict, expected: str) -> None:
         """Test that validation error dicts are formatted into human-readable messages."""
 
         assert format_single_error(error) == expected
