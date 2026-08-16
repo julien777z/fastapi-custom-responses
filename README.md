@@ -6,7 +6,7 @@ Provides normalized response objects and error handling for FastAPI applications
 
 - One error envelope for every failure: validation, `HTTPException`, `ValueError`, and unhandled exceptions.
 - Pydantic validation errors rewritten as human-readable messages instead of raw error arrays.
-- A stable `code` naming the condition, typed as an enum you define.
+- A stable `code` naming the condition, typed as an enum.
 - `fastapi_responses` to build FastAPI's `responses` mapping, documenting your codes in OpenAPI.
 - Generic `Response[T]`, `SuccessResponse`, and `PaginatedResponse[T]` envelopes for success payloads.
 - `ErrorResponseModel` for documenting error responses in OpenAPI.
@@ -22,8 +22,8 @@ pip install fastapi-custom-responses
 
 ```py
 from http import HTTPStatus
-from fastapi_custom_responses import EXCEPTION_HANDLERS, ErrorResponse, Response, SuccessResponse, fastapi_responses
-from fastapi import APIRouter, FastAPI, Request
+from fastapi_custom_responses import EXCEPTION_HANDLERS, ErrorResponse, Response, fastapi_responses
+from fastapi import APIRouter, FastAPI
 from enum import StrEnum
 from pydantic import BaseModel
 
@@ -51,7 +51,7 @@ class AccessErrorCode(StrEnum):
         HTTPStatus.INTERNAL_SERVER_ERROR: None,
     }),
 )
-async def index(_: Request) -> Response[Data]:
+async def index() -> Response[Data]:
     """Index route."""
 
     return Response(
@@ -59,8 +59,11 @@ async def index(_: Request) -> Response[Data]:
         data=Data(example="hello"),
     )
 
-@router.get("/return-error")
-async def error_route(_: Request) -> Response:
+@router.get(
+    "/return-error",
+    responses=fastapi_responses({HTTPStatus.FORBIDDEN: AccessErrorCode}),
+)
+async def error_route() -> Response[Data]:
     """Error route."""
 
     raise ErrorResponse(
@@ -147,31 +150,11 @@ Default messages for common status codes:
 | `400` | `"Invalid request"` |
 | `500` | `"An unexpected error occurred"` |
 
-### Error Codes
-
-`error` is human-readable and may be reworded or localized. `code` is the stable identifier clients branch on. Declare your codes as a `StrEnum`, so a module that never imports this package can own them:
+`from_status_code` accepts only these five statuses. Pass `error` yourself for any other:
 
 ```py
-from enum import StrEnum
-
-class AccessErrorCode(StrEnum):
-    PERMISSION_DENIED = "permission_denied"
-    ACCOUNT_SUSPENDED = "account_suspended"
-```
-
-The library's own handlers name their conditions too; import `DefaultErrorCode` to branch on `validation_error`, `invalid_value`, and `internal_error`.
-
-Pass a member when raising; both `ErrorResponse` and `from_status_code` accept it:
-
-```py
-raise ErrorResponse(
-    error="Your account is suspended",
-    status_code=HTTPStatus.FORBIDDEN,
-    code=AccessErrorCode.ACCOUNT_SUSPENDED,
-)
-# { "success": false, "error": "Your account is suspended", "code": "account_suspended" }
-
-raise ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN, code=AccessErrorCode.PERMISSION_DENIED)
+raise ErrorResponse(error="That name is already taken", status_code=HTTPStatus.CONFLICT)
+# { "success": false, "error": "That name is already taken" }
 ```
 
 ### Validation Error Normalization
@@ -233,6 +216,34 @@ Supported Pydantic error types and their human-readable formats:
 | `json_invalid` | `Invalid JSON in request body` |
 
 Any unrecognized error types fall back to the Pydantic error message prefixed with the field name.
+
+## Error Codes
+
+`error` is human-readable and may be reworded or localized. `code` is the stable identifier clients branch on. Declare your codes as a `StrEnum`, so a module that never imports this package can own them:
+
+```py
+from enum import StrEnum
+
+class AccessErrorCode(StrEnum):
+    PERMISSION_DENIED = "permission_denied"
+    ACCOUNT_SUSPENDED = "account_suspended"
+```
+
+The library's own handlers name their conditions too; import `DefaultErrorCode` to branch on `validation_error`, `invalid_value`, and `internal_error`.
+
+Pass a member when raising; both `ErrorResponse` and `from_status_code` accept it:
+
+```py
+raise ErrorResponse(
+    error="Your account is suspended",
+    status_code=HTTPStatus.FORBIDDEN,
+    code=AccessErrorCode.ACCOUNT_SUSPENDED,
+)
+# { "success": false, "error": "Your account is suspended", "code": "account_suspended" }
+
+raise ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN, code=AccessErrorCode.PERMISSION_DENIED)
+```
+
 
 ## Documenting Responses
 
