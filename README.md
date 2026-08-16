@@ -22,8 +22,9 @@ pip install fastapi-custom-responses
 
 ```py
 from http import HTTPStatus
-from fastapi_custom_responses import EXCEPTION_HANDLERS, ErrorCode, ErrorResponse, Response, SuccessResponse, fastapi_responses
+from fastapi_custom_responses import EXCEPTION_HANDLERS, ErrorResponse, Response, SuccessResponse, fastapi_responses
 from fastapi import APIRouter, FastAPI, Request
+from enum import StrEnum
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -38,7 +39,7 @@ app = FastAPI(
 class Data(BaseModel):
     example: str
 
-class AccessErrorCode(ErrorCode):
+class AccessErrorCode(StrEnum):
     PERMISSION_DENIED = "permission_denied"
     ACCOUNT_SUSPENDED = "account_suspended"
 
@@ -154,17 +155,17 @@ raise ErrorResponse(error="That name is already taken", status_code=HTTPStatus.C
 
 ### Error Codes
 
-`error` is human-readable and may be reworded or localized. `code` is the stable identifier clients branch on. Define your codes by subclassing `ErrorCode`:
+`error` is human-readable and may be reworded or localized. `code` is the stable identifier clients branch on. Declare your codes as a `StrEnum`, so a module that never imports this package can own them:
 
 ```py
-from fastapi_custom_responses import ErrorCode
+from enum import StrEnum
 
-class AccessErrorCode(ErrorCode):
+class AccessErrorCode(StrEnum):
     PERMISSION_DENIED = "permission_denied"
     ACCOUNT_SUSPENDED = "account_suspended"
 ```
 
-Any `StrEnum` is accepted, so a module that cannot import this package can declare its codes with `StrEnum` directly. `ErrorCode` is a convenience base for the ones that can.
+The library emits its own codes for conditions no status names; import `DefaultErrorCode` to branch on `validation_error` and `invalid_value`.
 
 Pass a member when raising; both `ErrorResponse` and `from_status_code` accept it:
 
@@ -267,8 +268,10 @@ from fastapi_custom_responses import Response, SuccessResponse, fastapi_response
 Each error code enum becomes its own named schema in the OpenAPI document, so generated clients get a real union type per domain rather than a bare string:
 
 ```json
-"AccessErrorCode": { "type": "string", "enum": ["permission_denied", "account_suspended"] }
+"AccessErrorCode": { "type": "string", "enum": ["permission_denied", "account_suspended"], "title": "AccessErrorCode" }
 ```
+
+The code a status falls back to is documented alongside, so the schema covers every value the endpoint can emit.
 
 The statuses with default messages are described with the library's own message; the rest keep FastAPI's status phrase. Entries needing `headers`, custom media types, or `links` are written directly and merge with the result:
 

@@ -1,7 +1,6 @@
 from .errors import (
     EXCEPTION_HANDLERS,
     DefaultErrorCode,
-    ErrorCode,
     ErrorResponse,
     ErrorResponseModel,
     ResponseSpec,
@@ -12,7 +11,6 @@ from .responses import PaginatedResponse, PaginationMeta, Response, SuccessRespo
 __all__ = [
     "EXCEPTION_HANDLERS",
     "DefaultErrorCode",
-    "ErrorCode",
     "ErrorResponse",
     "ErrorResponseModel",
     "PaginatedResponse",

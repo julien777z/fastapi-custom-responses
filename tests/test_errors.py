@@ -1,5 +1,6 @@
 from http import HTTPStatus
 from inspect import Parameter, signature
+from typing import Literal
 
 import pytest
 from fastapi import FastAPI
@@ -361,7 +362,7 @@ class TestFastapiResponses:
         responses = fastapi_responses({HTTPStatus.FORBIDDEN: AccessErrorCode})
 
         assert responses[HTTPStatus.FORBIDDEN] == {
-            "model": ErrorResponseModel[AccessErrorCode],
+            "model": ErrorResponseModel[AccessErrorCode | Literal["forbidden"]],
             "description": "You don't have permission to perform this action",
         }
 
@@ -380,7 +381,18 @@ class TestFastapiResponses:
 
         responses = fastapi_responses({HTTPStatus.FORBIDDEN: StandaloneErrorCode})
 
-        assert responses[HTTPStatus.FORBIDDEN]["model"] is ErrorResponseModel[StandaloneErrorCode]
+        assert (
+            responses[HTTPStatus.FORBIDDEN]["model"]
+            is ErrorResponseModel[StandaloneErrorCode | Literal["forbidden"]]
+        )
+
+    def test_documents_the_code_the_status_defaults_to(self) -> None:
+        """Test that the code an unnamed error falls back to is documented beside the enum."""
+
+        responses = fastapi_responses({HTTPStatus.FORBIDDEN: AccessErrorCode})
+        code = responses[HTTPStatus.FORBIDDEN]["model"].model_json_schema()["properties"]["code"]
+
+        assert {"type": "string", "const": "forbidden"} in code["anyOf"]
 
     def test_success_model_is_passed_through(self) -> None:
         """Test that a success envelope is documented as given, leaving its description to FastAPI."""
@@ -411,13 +423,16 @@ class TestOpenApiSchema:
         responses = spec["paths"]["/reports"]["post"]["responses"]
 
         assert schemas["AccessErrorCode"]["enum"] == ["permission_denied", "account_suspended"]
-        assert "ErrorResponseModel_AccessErrorCode_" in schemas
         assert "Response_ValidationPayload_" in schemas
 
         forbidden = responses[str(int(HTTPStatus.FORBIDDEN))]
-        assert forbidden["content"]["application/json"]["schema"] == {
-            "$ref": "#/components/schemas/ErrorResponseModel_AccessErrorCode_"
-        }
+        envelope = forbidden["content"]["application/json"]["schema"]["$ref"].rsplit("/", 1)[-1]
+
+        assert schemas[envelope]["properties"]["code"]["anyOf"] == [
+            {"$ref": "#/components/schemas/AccessErrorCode"},
+            {"type": "string", "const": "forbidden"},
+            {"type": "null"},
+        ]
 
 
 class TestFormatFieldLocation:

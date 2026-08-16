@@ -10,7 +10,6 @@ from pydantic import BaseModel, Field, field_validator
 
 from fastapi_custom_responses import (
     EXCEPTION_HANDLERS,
-    ErrorCode,
     ErrorResponse,
     PaginatedResponse,
     Response,
@@ -19,7 +18,7 @@ from fastapi_custom_responses import (
 )
 
 
-class AccessErrorCode(ErrorCode):
+class AccessErrorCode(StrEnum):
     """Error codes for access failures, used to exercise consumer-defined codes."""
 
     PERMISSION_DENIED = "permission_denied"

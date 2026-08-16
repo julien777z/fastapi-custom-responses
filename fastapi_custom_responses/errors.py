@@ -2,7 +2,7 @@ import logging
 from collections.abc import Callable
 from enum import StrEnum
 from http import HTTPStatus
-from typing import Any, Final, Self
+from typing import Any, Final, Literal, Self
 
 from fastapi import HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -40,11 +40,7 @@ SIMPLE_TYPE_MESSAGES: Final[dict[str, str]] = {
 type ResponseSpec = type[StrEnum] | type[BaseModel]
 
 
-class ErrorCode(StrEnum):
-    """Base class for stable error identifiers clients can branch on."""
-
-
-class DefaultErrorCode(ErrorCode):
+class DefaultErrorCode(StrEnum):
     """Codes for conditions the library detects that no HTTP status names."""
 
     VALIDATION_ERROR = "validation_error"
@@ -266,7 +262,9 @@ def response_entry(status_code: HTTPStatus, spec: ResponseSpec | None) -> dict[s
     if spec is not None and issubclass(spec, BaseModel):
         return {"model": spec}
 
-    model = ErrorResponseModel[spec] if spec is not None else ErrorResponseModel
+    status_code_default = STATUS_ERROR_CODES.get(status_code)
+    documented_codes = spec if status_code_default is None else spec | Literal[status_code_default]
+    model = ErrorResponseModel if spec is None else ErrorResponseModel[documented_codes]
 
     return {"model": model, "description": ERROR_MESSAGES.get(status_code, status_code.phrase)}
 
