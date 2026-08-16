@@ -79,6 +79,12 @@ async def error_route(_: Request) -> Response:
 
 When using OpenAPI generators, use `SuccessResponse` instead of `Response` if your endpoint has no data to return.
 
+Build a paginated response from a page of items and the bounds it was read with:
+
+```py
+return PaginatedResponse.build_page(items, offset=offset, limit=limit, total=total)
+```
+
 ## Error Normalization
 
 Register the handlers when you create the app:
