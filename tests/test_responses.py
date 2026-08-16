@@ -1,4 +1,5 @@
 from http import HTTPStatus
+from inspect import Parameter, signature
 
 import pytest
 from httpx import AsyncClient
@@ -67,12 +68,12 @@ class TestBuildPage:
             "meta": {"offset": 90, "limit": 10, "total": 57},
         }
 
-    def test_bounds_cannot_be_passed_positionally(self) -> None:
-        """Test that the three bounds are keyword-only and cannot be transposed by position."""
+    def test_bounds_are_keyword_only(self) -> None:
+        """Test that the page bounds can only be supplied by keyword and cannot be transposed."""
 
-        with pytest.raises(TypeError):
-            # pylint: disable-next=too-many-function-args,missing-kwoa
-            PaginatedResponse.build_page([SAMPLE_PAYLOAD], 20, 10, 57)
+        bounds = signature(PaginatedResponse.build_page).parameters
+
+        assert all(bounds[name].kind is Parameter.KEYWORD_ONLY for name in ("offset", "limit", "total"))
 
     def test_parametrized_page_accepts_its_item_type(self) -> None:
         """Test that a parametrized paginated response carries items of the type it names."""

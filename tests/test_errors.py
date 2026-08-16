@@ -1,4 +1,5 @@
 from http import HTTPStatus
+from inspect import Parameter, signature
 
 import pytest
 from fastapi import FastAPI
@@ -220,12 +221,10 @@ class TestErrorResponse:
 class TestErrorResponseCode:
     """Tests for the error code carried by ErrorResponse."""
 
-    def test_code_cannot_be_passed_positionally(self) -> None:
-        """Test that code is keyword-only and cannot bind as a third positional argument."""
+    def test_code_is_keyword_only(self) -> None:
+        """Test that the error code can only be supplied by keyword."""
 
-        with pytest.raises(TypeError):
-            # pylint: disable-next=too-many-function-args,pointless-exception-statement
-            ErrorResponse("boom", HTTPStatus.FORBIDDEN, "some_code")
+        assert signature(ErrorResponse).parameters["code"].kind is Parameter.KEYWORD_ONLY
 
     def test_accepts_a_code_declared_without_the_library_base(self) -> None:
         """Test that a code enum from a consumer that never imports the base is accepted."""
@@ -459,20 +458,16 @@ class TestGeneralExceptionHandler:
     client: AsyncClient
 
     async def test_general_exception_handler(self) -> None:
-        """Test that unhandled exceptions return generic 500 message."""
+        """Test that an unhandled exception renders the generic server-error envelope."""
 
-        try:
-            response = await self.client.get("/general-exception")
+        response = await self.client.get("/general-exception")
 
-            assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
-            assert response.json() == {
-                "success": False,
-                "error": "An unexpected error occurred",
-                "code": "internal_server_error",
-            }
-        except RuntimeError as e:
-            # In test mode, FastAPI may re-raise the exception
-            assert str(e) == "Something went wrong"
+        assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
+        assert response.json() == {
+            "success": False,
+            "error": "An unexpected error occurred",
+            "code": "internal_server_error",
+        }
 
 
 class TestFormatFieldLocation:
