@@ -10,7 +10,7 @@ Provides normalized response objects and error handling for FastAPI applications
 - `fastapi_responses` to build FastAPI's `responses` mapping, documenting your codes in OpenAPI.
 - Generic `Response[T]`, `SuccessResponse`, and `PaginatedResponse[T]` envelopes for success payloads.
 - `ErrorResponseModel` for documenting error responses in OpenAPI.
-- Default messages for common status codes via `ErrorResponse.from_status_code`.
+- Default messages and codes for common status codes via `ErrorResponse.from_status_code`.
 
 ## Installation
 
@@ -172,36 +172,6 @@ raise ErrorResponse(error="Item not found", status_code=HTTPStatus.NOT_FOUND)
 # { "success": false, "error": "Item not found", "code": "not_found" }
 ```
 
-### Documenting Responses
-
-`fastapi_responses` builds FastAPI's `responses` mapping. Give it an error code enum, `None` for the bare error envelope, or a success envelope:
-
-```py
-from fastapi_custom_responses import Response, SuccessResponse, fastapi_responses
-
-@router.post(
-    "/reports",
-    responses=fastapi_responses({
-        HTTPStatus.CREATED: Response[Report],
-        HTTPStatus.ACCEPTED: SuccessResponse,
-        HTTPStatus.FORBIDDEN: AccessErrorCode,
-        HTTPStatus.NOT_FOUND: None,
-    }),
-)
-```
-
-Each error code enum becomes its own named schema in the OpenAPI document, so generated clients get a real union type per domain rather than a bare string:
-
-```json
-"AccessErrorCode": { "type": "string", "enum": ["permission_denied", "account_suspended"] }
-```
-
-Error statuses are described with the library's own message rather than the generic status phrase. Entries needing `headers`, custom media types, or `links` are written directly and merge with the result:
-
-```py
-responses={**fastapi_responses({HTTPStatus.FORBIDDEN: AccessErrorCode}), HTTPStatus.NOT_MODIFIED: {"headers": {...}}}
-```
-
 ### Validation Error Normalization
 
 When a request fails Pydantic validation, FastAPI normally returns a verbose JSON array of raw Pydantic errors. With `EXCEPTION_HANDLERS`, these are automatically converted into concise, human-readable messages.
@@ -261,6 +231,36 @@ Supported Pydantic error types and their human-readable formats:
 | `json_invalid` | `Invalid JSON in request body` |
 
 Any unrecognized error types fall back to the Pydantic error message prefixed with the field name.
+
+## Documenting Responses
+
+`fastapi_responses` builds FastAPI's `responses` mapping. Give it an error code enum, `None` for the bare error envelope, or a success envelope:
+
+```py
+from fastapi_custom_responses import Response, SuccessResponse, fastapi_responses
+
+@router.post(
+    "/reports",
+    responses=fastapi_responses({
+        HTTPStatus.CREATED: Response[Report],
+        HTTPStatus.ACCEPTED: SuccessResponse,
+        HTTPStatus.FORBIDDEN: AccessErrorCode,
+        HTTPStatus.NOT_FOUND: None,
+    }),
+)
+```
+
+Each error code enum becomes its own named schema in the OpenAPI document, so generated clients get a real union type per domain rather than a bare string:
+
+```json
+"AccessErrorCode": { "type": "string", "enum": ["permission_denied", "account_suspended"] }
+```
+
+Error statuses are described with the library's own message rather than the generic status phrase. Entries needing `headers`, custom media types, or `links` are written directly and merge with the result:
+
+```py
+responses={**fastapi_responses({HTTPStatus.FORBIDDEN: AccessErrorCode}), HTTPStatus.NOT_MODIFIED: {"headers": {...}}}
+```
 
 ## Local Development
 
