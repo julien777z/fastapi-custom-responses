@@ -32,8 +32,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Python and Poetry
-        uses: ./.github/actions/setup-python-poetry
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: ".python-version"
+
+      - name: Setup Poetry
+        uses: ./.github/actions/setup-poetry
 
       - name: Bump version
         id: bump

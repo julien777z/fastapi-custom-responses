@@ -1,0 +1,11 @@
+name: Setup Poetry
+description: Install the repository's Poetry version and put it on PATH.
+
+runs:
+  using: composite
+  steps:
+    - name: Install Poetry
+      shell: bash
+      run: |
+        pipx install poetry==2.1.4
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
