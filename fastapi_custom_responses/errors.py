@@ -55,7 +55,7 @@ class ErrorResponseModel[CodeT: str](BaseModel):
     """Error response schema for use in FastAPI's `responses` parameter."""
 
     success: bool
-    error: str
+    error: str = ERROR_MESSAGES[HTTPStatus.INTERNAL_SERVER_ERROR]
     code: CodeT | None = None
 
 

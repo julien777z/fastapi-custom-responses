@@ -243,6 +243,13 @@ class TestErrorResponseModel:
 
         assert model.code == expected_code
 
+    def test_error_defaults_to_the_generic_message(self) -> None:
+        """Test that omitting the error message falls back to the generic one."""
+
+        model = ErrorResponseModel(success=False)
+
+        assert model.error == "An unexpected error occurred"
+
     def test_json_schema_exposes_code_as_optional(self) -> None:
         """Test that the generated JSON schema lists code as an optional property."""
 

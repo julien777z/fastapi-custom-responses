@@ -1,13 +1,13 @@
 # FastAPI Custom Responses
 
-Provides normalized response objects and error handling for FastAPI applications. All errors — validation, HTTP, and unhandled exceptions — are returned in a consistent `{ "success": false, "error": "..." }` format with human-readable messages.
+Provides normalized response objects and error handling for FastAPI applications.
 
 ## Features
 
 - One error envelope for every failure: validation, `HTTPException`, `ValueError`, and unhandled exceptions.
 - Pydantic validation errors rewritten as human-readable messages instead of raw error arrays.
 - A stable `code` on every error, typed as an enum you define.
-- `fastapi_responses` to build FastAPI's `responses=` mapping, documenting your codes in OpenAPI.
+- `fastapi_responses` to build FastAPI's `responses` mapping, documenting your codes in OpenAPI.
 - Generic `Response[T]`, `SuccessResponse`, and `PaginatedResponse[T]` envelopes for success payloads.
 - `ErrorResponseModel` for documenting error responses in OpenAPI.
 - Default messages for common status codes via `ErrorResponse.from_status_code`.
@@ -69,11 +69,28 @@ async def error_route(_: Request) -> Response:
     )
 ```
 
-**Note:** When using OpenAPI generators, use `SuccessResponse` instead of `Response` if your endpoint has no data to return.
+## Response Envelopes
+
+| Envelope | Body |
+|----------|------|
+| `Response[T]` | `{ "success": true, "data": { ... } }` |
+| `SuccessResponse` | `{ "success": true }` |
+| `PaginatedResponse[T]` | `{ "success": true, "data": [ ... ], "meta": { "offset": 0, "limit": 10, "total": 1 } }` |
+
+When using OpenAPI generators, use `SuccessResponse` instead of `Response` if your endpoint has no data to return.
 
 ## Error Normalization
 
-Passing `EXCEPTION_HANDLERS` to your FastAPI app registers handlers that normalize **all** errors into a consistent JSON shape:
+Register the handlers when you create the app:
+
+```py
+from fastapi import FastAPI
+from fastapi_custom_responses import EXCEPTION_HANDLERS
+
+app = FastAPI(exception_handlers=EXCEPTION_HANDLERS)
+```
+
+Every error then normalizes into one JSON shape:
 
 ```json
 {
@@ -108,7 +125,7 @@ You can also create one from a status code alone, which maps to a default messag
 
 ```py
 raise ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN)
-# → { "success": false, "error": "You don't have permission to perform this action", "code": "forbidden" }
+# { "success": false, "error": "You don't have permission to perform this action", "code": "forbidden" }
 ```
 
 Default messages and codes for common status codes:
@@ -135,7 +152,7 @@ class AccessErrorCode(ErrorCode):
     ACCOUNT_SUSPENDED = "account_suspended"
 ```
 
-Pass a member when raising; `code` is keyword-only, and `from_status_code` accepts it too:
+Pass a member when raising; both `ErrorResponse` and `from_status_code` accept it:
 
 ```py
 raise ErrorResponse(
@@ -143,7 +160,7 @@ raise ErrorResponse(
     status_code=HTTPStatus.FORBIDDEN,
     code=AccessErrorCode.ACCOUNT_SUSPENDED,
 )
-# → { "success": false, "error": "Your account is suspended", "code": "account_suspended" }
+# { "success": false, "error": "Your account is suspended", "code": "account_suspended" }
 
 raise ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN, code=AccessErrorCode.PERMISSION_DENIED)
 ```
@@ -152,12 +169,12 @@ Omit the code and it falls back to the status name, so every error response carr
 
 ```py
 raise ErrorResponse(error="Item not found", status_code=HTTPStatus.NOT_FOUND)
-# → { "success": false, "error": "Item not found", "code": "not_found" }
+# { "success": false, "error": "Item not found", "code": "not_found" }
 ```
 
 ### Documenting Responses
 
-`fastapi_responses` builds FastAPI's `responses=` mapping. Give it an error code enum, `None` for the bare error envelope, or a success envelope:
+`fastapi_responses` builds FastAPI's `responses` mapping. Give it an error code enum, `None` for the bare error envelope, or a success envelope:
 
 ```py
 from fastapi_custom_responses import Response, SuccessResponse, fastapi_responses
