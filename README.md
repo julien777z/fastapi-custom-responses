@@ -158,6 +158,8 @@ class AccessErrorCode(ErrorCode):
     ACCOUNT_SUSPENDED = "account_suspended"
 ```
 
+Any `StrEnum` is accepted, so a module that cannot import this package can declare its codes with `StrEnum` directly. `ErrorCode` is a convenience base for the ones that can.
+
 Pass a member when raising; both `ErrorResponse` and `from_status_code` accept it:
 
 ```py

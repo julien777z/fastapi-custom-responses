@@ -1,5 +1,5 @@
 import asyncio
-from enum import Enum
+from enum import Enum, StrEnum
 from http import HTTPStatus
 
 import pytest
@@ -22,6 +22,12 @@ class AccessErrorCode(ErrorCode):
 
     PERMISSION_DENIED = "permission_denied"
     ACCOUNT_SUSPENDED = "account_suspended"
+
+
+class NeutralErrorCode(StrEnum):
+    """Error codes declared without the library's base, as a consumer that cannot import it would."""
+
+    MEMBERSHIP_REQUIRED = "membership_required"
 
 
 class ValidationPayload(BaseModel):

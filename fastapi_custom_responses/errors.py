@@ -37,7 +37,7 @@ SIMPLE_TYPE_MESSAGES: Final[dict[str, str]] = {
     "uuid_parsing": "must be a valid UUID",
 }
 
-type ResponseSpec = type[ErrorCode] | type[BaseModel] | None
+type ResponseSpec = type[StrEnum] | type[BaseModel] | None
 
 
 class ErrorCode(StrEnum):
@@ -67,7 +67,7 @@ class ErrorResponse(Exception):
         error: str,
         status_code: int = HTTPStatus.BAD_REQUEST,
         *,
-        code: ErrorCode | None = None,
+        code: StrEnum | None = None,
     ) -> None:
         """Initialize error response with message, status code, and error code."""
 
@@ -78,7 +78,7 @@ class ErrorResponse(Exception):
         super().__init__(error)
 
     @classmethod
-    def from_status_code(cls, status_code: int, *, code: ErrorCode | None = None) -> Self:
+    def from_status_code(cls, status_code: int, *, code: StrEnum | None = None) -> Self:
         """Create an error response from a status code."""
 
         return cls(
