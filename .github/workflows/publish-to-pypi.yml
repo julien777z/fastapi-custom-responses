@@ -31,9 +31,6 @@ jobs:
       - name: Setup Python and Poetry
         uses: ./.github/actions/setup-python-poetry
 
-      - name: Install dependencies
-        run: poetry install --no-interaction --no-root
-
       - name: Bump version
         id: bump
         run: python .github/scripts/bump_version.py "${{ github.event.inputs.version_increment }}"
