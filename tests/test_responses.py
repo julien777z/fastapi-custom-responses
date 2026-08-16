@@ -2,6 +2,7 @@ from http import HTTPStatus
 
 import pytest
 from httpx import AsyncClient
+from pydantic import ValidationError
 
 from fastapi_custom_responses import PaginatedResponse
 from tests.conftest import SAMPLE_PAYLOAD, ValidationPayload
@@ -60,19 +61,28 @@ class TestBuildPage:
 
         page = PaginatedResponse.build_page([], offset=90, limit=10, total=57)
 
-        assert page.data == []
-        assert page.meta.total == 57
+        assert page.model_dump() == {
+            "success": True,
+            "data": [],
+            "meta": {"offset": 90, "limit": 10, "total": 57},
+        }
 
     def test_bounds_cannot_be_passed_positionally(self) -> None:
         """Test that the three bounds are keyword-only and cannot be transposed by position."""
 
         with pytest.raises(TypeError):
-            # pylint: disable-next=too-many-function-args
+            # pylint: disable-next=too-many-function-args,missing-kwoa
             PaginatedResponse.build_page([SAMPLE_PAYLOAD], 20, 10, 57)
 
-    def test_parametrized_page_validates_its_items(self) -> None:
-        """Test that a parametrized paginated response still validates the items it is given."""
+    def test_parametrized_page_accepts_its_item_type(self) -> None:
+        """Test that a parametrized paginated response carries items of the type it names."""
 
         page = PaginatedResponse[ValidationPayload].build_page([SAMPLE_PAYLOAD], offset=0, limit=10, total=1)
 
         assert page.data == [SAMPLE_PAYLOAD]
+
+    def test_parametrized_page_rejects_a_foreign_item(self) -> None:
+        """Test that a parametrized paginated response rejects an item of the wrong shape."""
+
+        with pytest.raises(ValidationError):
+            PaginatedResponse[ValidationPayload].build_page([{"unrelated": 1}], offset=0, limit=10, total=1)

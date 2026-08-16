@@ -12,7 +12,6 @@ from fastapi_custom_responses import (
     ErrorCode,
     ErrorResponse,
     PaginatedResponse,
-    PaginationMeta,
     Response,
     SuccessResponse,
 )

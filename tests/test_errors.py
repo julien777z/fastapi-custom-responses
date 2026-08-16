@@ -224,7 +224,7 @@ class TestErrorResponseCode:
         """Test that code is keyword-only and cannot bind as a third positional argument."""
 
         with pytest.raises(TypeError):
-            # pylint: disable-next=too-many-function-args
+            # pylint: disable-next=too-many-function-args,pointless-exception-statement
             ErrorResponse("boom", HTTPStatus.FORBIDDEN, "some_code")
 
 
