@@ -27,6 +27,7 @@ class PaginationMeta(SuperModelPydanticMixin):
 class PaginatedResponse[T](Response[list[T]]):
     """Paginated response model."""
 
+    data: list[T]
     meta: PaginationMeta
 
     @classmethod

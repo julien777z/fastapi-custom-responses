@@ -37,7 +37,7 @@ SIMPLE_TYPE_MESSAGES: Final[dict[str, str]] = {
     "uuid_parsing": "must be a valid UUID",
 }
 
-type ResponseSpec = type[StrEnum] | type[BaseModel] | None
+type ResponseSpec = type[StrEnum] | type[BaseModel]
 
 
 class ErrorCode(StrEnum):
@@ -101,8 +101,8 @@ def format_field_location(loc: tuple[int | str, ...]) -> str:
     return ".".join(field_parts)
 
 
-def format_number(value: int | float) -> str:
-    """Format a numeric constraint value for display, stripping unnecessary '.0' from whole floats."""
+def format_constraint_value(value: int | float | str) -> str:
+    """Format a constraint value for display, stripping unnecessary '.0' from whole floats."""
 
     if isinstance(value, float) and value.is_integer():
         return str(int(value))
@@ -153,7 +153,7 @@ CONSTRAINT_RULES: Final[dict[str, ConstraintRule]] = {
 }
 
 
-def format_constraint_error(field: str, ctx: dict, rule: ConstraintRule) -> str:
+def format_constraint_error(field: str, ctx: dict[str, Any], rule: ConstraintRule) -> str:
     """Format a constraint violation from its rule, falling back when the bound is absent from ctx."""
 
     value = ctx.get(rule.ctx_key)
@@ -162,7 +162,7 @@ def format_constraint_error(field: str, ctx: dict, rule: ConstraintRule) -> str:
 
     unit = "item" if value == 1 else "items"
 
-    return f"Field '{field}' {rule.template.format(value=format_number(value), unit=unit)}"
+    return f"Field '{field}' {rule.template.format(value=format_constraint_value(value), unit=unit)}"
 
 
 def format_single_error(error: dict) -> str:
@@ -205,8 +205,8 @@ def format_validation_errors(exc: RequestValidationError) -> str:
     return ". ".join(format_single_error(error) for error in errors)
 
 
-def error_json_response(status_code: int, error: str, code: str | None = None) -> JSONResponse:
-    """Build the standard `{success: false, error: ...}` JSON response."""
+def error_json_response(status_code: int, error: str, code: str | None) -> JSONResponse:
+    """Build the standard `{success: false, error: ..., code: ...}` JSON response."""
 
     response = ErrorResponseModel(success=False, error=error, code=code)
     content = response.model_dump(mode="json", exclude_none=True)
@@ -260,25 +260,21 @@ def http_exception_handler(_: Request, exc: HTTPException) -> JSONResponse:
     return error_json_response(exc.status_code, error_message, STATUS_ERROR_CODES.get(exc.status_code))
 
 
-def response_entry(status_code: HTTPStatus, spec: ResponseSpec) -> dict[str, Any]:
+def response_entry(status_code: HTTPStatus, spec: ResponseSpec | None) -> dict[str, Any]:
     """Build one FastAPI response entry from a status code and its model or error codes."""
 
     if spec is not None and issubclass(spec, BaseModel):
         return {"model": spec}
 
-    entry: dict[str, Any] = {"model": ErrorResponseModel[spec] if spec is not None else ErrorResponseModel}
+    model = ErrorResponseModel[spec] if spec is not None else ErrorResponseModel
 
-    message = ERROR_MESSAGES.get(status_code)
-    if message is not None:
-        entry["description"] = message
-
-    return entry
+    return {"model": model, "description": ERROR_MESSAGES.get(status_code, status_code.phrase)}
 
 
-def fastapi_responses(models: dict[HTTPStatus, ResponseSpec]) -> dict[int | str, dict[str, Any]]:
+def fastapi_responses(specs: dict[HTTPStatus, ResponseSpec | None]) -> dict[int | str, dict[str, Any]]:
     """Build FastAPI's `responses` mapping from status codes and their models or error codes."""
 
-    return {status_code: response_entry(status_code, spec) for status_code, spec in models.items()}
+    return {status_code: response_entry(status_code, spec) for status_code, spec in specs.items()}
 
 
 EXCEPTION_HANDLERS: dict[type[Exception], Callable[[Request, Exception], JSONResponse]] = {
