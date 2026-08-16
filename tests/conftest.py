@@ -1,7 +1,7 @@
 from collections.abc import AsyncIterator, Callable
 from enum import Enum, StrEnum
 from http import HTTPStatus
-from typing import Final
+from typing import Any, Final
 
 import pytest
 from fastapi import FastAPI, HTTPException
@@ -79,7 +79,7 @@ class RaisedErrorCase(BaseModel):
 
     build_error: Callable[[], Exception]
     status_code: HTTPStatus
-    expected_body: dict
+    expected_body: dict[str, Any]
 
 
 RAISED_ERROR_CASES: Final[dict[str, RaisedErrorCase]] = {

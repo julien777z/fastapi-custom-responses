@@ -1,5 +1,6 @@
 from http import HTTPStatus
 from inspect import Parameter, signature
+from typing import Any
 
 import pytest
 from httpx import AsyncClient
@@ -29,7 +30,7 @@ class TestSuccessEnvelopes:
         ids=["with_data", "payload_free", "paginated"],
     )
     async def test_renders_the_success_envelope(
-        self, client: AsyncClient, path: str, expected_body: dict
+        self, client: AsyncClient, path: str, expected_body: dict[str, Any]
     ) -> None:
         """Test that each success envelope emits its documented body and nothing more."""
 

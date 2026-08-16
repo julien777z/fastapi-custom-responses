@@ -1,5 +1,6 @@
 from http import HTTPStatus
 from inspect import Parameter, signature
+from typing import Any
 
 import pytest
 from fastapi import FastAPI
@@ -112,7 +113,7 @@ class TestConstrainedValidationErrors:
         ],
     )
     async def test_constrained_field_error(
-        self, client: AsyncClient, payload_override: dict, expected_error: str
+        self, client: AsyncClient, payload_override: dict[str, Any], expected_error: str
     ) -> None:
         """Test that constrained field violations produce specific error messages."""
 
@@ -517,7 +518,7 @@ class TestFormatSingleError:
             "comparison_without_ctx",
         ],
     )
-    def test_formats_the_message(self, error: dict, expected: str) -> None:
+    def test_formats_the_message(self, error: dict[str, Any], expected: str) -> None:
         """Test that validation error dicts are formatted into human-readable messages."""
 
         assert format_single_error(error) == expected
