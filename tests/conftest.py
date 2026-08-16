@@ -24,7 +24,7 @@ class AccessErrorCode(ErrorCode):
     ACCOUNT_SUSPENDED = "account_suspended"
 
 
-class NeutralErrorCode(StrEnum):
+class StandaloneErrorCode(StrEnum):
     """Error codes declared without the library's base, as a consumer that cannot import it would."""
 
     MEMBERSHIP_REQUIRED = "membership_required"

@@ -17,7 +17,7 @@ from fastapi_custom_responses.errors import (
     format_field_location,
     format_single_error,
 )
-from tests.conftest import AccessErrorCode, NeutralErrorCode, ValidationPayload
+from tests.conftest import AccessErrorCode, StandaloneErrorCode, ValidationPayload
 
 VALID_CONSTRAINED_PAYLOAD: dict = {
     "username": "alice",
@@ -230,7 +230,9 @@ class TestErrorResponseCode:
     def test_accepts_a_code_declared_without_the_library_base(self) -> None:
         """Test that a code enum from a consumer that never imports the base is accepted."""
 
-        error = ErrorResponse("Not a member", HTTPStatus.FORBIDDEN, code=NeutralErrorCode.MEMBERSHIP_REQUIRED)
+        error = ErrorResponse(
+            "Not a member", HTTPStatus.FORBIDDEN, code=StandaloneErrorCode.MEMBERSHIP_REQUIRED
+        )
 
         assert error.code == "membership_required"
 
@@ -346,9 +348,9 @@ class TestFastapiResponses:
     def test_code_enum_without_the_library_base_is_parametrized(self) -> None:
         """Test that a code enum owned by a consumer that never imports the base still documents."""
 
-        responses = fastapi_responses({HTTPStatus.FORBIDDEN: NeutralErrorCode})
+        responses = fastapi_responses({HTTPStatus.FORBIDDEN: StandaloneErrorCode})
 
-        assert responses[HTTPStatus.FORBIDDEN]["model"] is ErrorResponseModel[NeutralErrorCode]
+        assert responses[HTTPStatus.FORBIDDEN]["model"] is ErrorResponseModel[StandaloneErrorCode]
 
     def test_success_model_is_passed_through(self) -> None:
         """Test that a success envelope is documented as given, leaving its description to FastAPI."""
