@@ -263,8 +263,13 @@ def response_entry(status_code: HTTPStatus, spec: ResponseSpec | None) -> dict[s
         return {"model": spec}
 
     status_code_default = STATUS_ERROR_CODES.get(status_code)
-    documented_codes = spec if status_code_default is None else spec | Literal[status_code_default]
-    model = ErrorResponseModel if spec is None else ErrorResponseModel[documented_codes]
+
+    if spec is None:
+        model = ErrorResponseModel
+    elif status_code_default is None:
+        model = ErrorResponseModel[spec]
+    else:
+        model = ErrorResponseModel[spec | Literal[status_code_default]]
 
     return {"model": model, "description": ERROR_MESSAGES.get(status_code, status_code.phrase)}
 
