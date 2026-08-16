@@ -14,8 +14,8 @@ on:
       - ".cursor/**"
 
 jobs:
-  test:
-    name: Run Tests
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -32,6 +32,25 @@ jobs:
           poetry run black --check .
           poetry run isort --check-only .
           poetry run pylint fastapi_custom_responses/ .github/scripts/
+
+  test:
+    name: Test on Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13", "3.14"]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python and Poetry
+        uses: ./.github/actions/setup-python-poetry
+        with:
+          python-version: "${{ matrix.python-version }}"
+
+      - name: Install dependencies
+        run: poetry install -E dev
 
       - name: Run Tests
         run: poetry run pytest tests/ -v
