@@ -791,4 +791,4 @@ dev = ["black", "httpx", "isort", "pylint", "pytest", "pytest-asyncio"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.15"
-content-hash = "3090c06b493d48e6f36fd8f6fa21a16a4d01953f21f2fcf6a9aae3e67803af6e"
+content-hash = "ce56f6c9715da76d63e3a2b153050e132ed385d97caa0e87a07aad587b6208e0"
