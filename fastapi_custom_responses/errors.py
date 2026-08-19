@@ -1,5 +1,5 @@
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from enum import StrEnum
 from http import HTTPStatus
 from types import UnionType
@@ -183,13 +183,15 @@ def format_validation_errors(exc: RequestValidationError) -> str:
     return ". ".join(format_single_error(error) for error in errors)
 
 
-def error_json_response(status_code: int, error: str, code: str | None) -> JSONResponse:
+def error_json_response(
+    status_code: int, error: str, code: str | None, headers: Mapping[str, str] | None = None
+) -> JSONResponse:
     """Build the standard `{success: false, error: ..., code: ...}` JSON response."""
 
     response = ErrorResponseModel(success=False, error=error, code=code)
     content = response.model_dump(mode="json", exclude_none=True)
 
-    return JSONResponse(status_code=status_code, content=content)
+    return JSONResponse(status_code=status_code, content=content, headers=headers)
 
 
 def validation_exception_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
@@ -233,7 +235,7 @@ def http_exception_handler(_: Request, exc: StarletteHTTPException) -> JSONRespo
 
     error_message = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
 
-    return error_json_response(exc.status_code, error_message, None)
+    return error_json_response(exc.status_code, error_message, None, headers=exc.headers)
 
 
 def documented_model(spec: ResponseSpec) -> type[BaseModel]:

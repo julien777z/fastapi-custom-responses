@@ -178,22 +178,30 @@ class TestErrorEnvelope:
         assert response.json() == case.expected_body
 
     @pytest.mark.parametrize(
-        ("method", "path", "status_code", "error"),
+        ("method", "path", "status_code"),
         [
-            ("GET", "/no-such-route", HTTPStatus.NOT_FOUND, "Not Found"),
-            ("POST", "/success-response", HTTPStatus.METHOD_NOT_ALLOWED, "Method Not Allowed"),
+            ("GET", "/no-such-route", HTTPStatus.NOT_FOUND),
+            ("POST", "/success-response", HTTPStatus.METHOD_NOT_ALLOWED),
         ],
         ids=["unknown_route", "wrong_method"],
     )
     async def test_a_routing_failure_renders_the_envelope(
-        self, client: AsyncClient, method: str, path: str, status_code: HTTPStatus, error: str
+        self, client: AsyncClient, method: str, path: str, status_code: HTTPStatus
     ) -> None:
         """Test that the errors the router raises itself render the envelope like any other."""
 
         response = await client.request(method, path)
 
         assert response.status_code == status_code
-        assert response.json() == {"success": False, "error": error}
+        assert response.json() == {"success": False, "error": status_code.phrase}
+
+    async def test_the_headers_an_http_exception_carries_reach_the_client(self, client: AsyncClient) -> None:
+        """Test that headers attached to an HTTP exception survive the envelope conversion."""
+
+        response = await client.post("/success-response")
+
+        assert response.status_code == HTTPStatus.METHOD_NOT_ALLOWED
+        assert response.headers["allow"] == "GET"
 
     async def test_a_model_that_fails_to_validate_reports_generically(self, client: AsyncClient) -> None:
         """Test that a model failing to validate inside the app never echoes what it was given."""
