@@ -37,7 +37,7 @@ class DefaultErrorCode(StrEnum):
 
 
 class ErrorResponseModel[CodeT: str](BaseModel):
-    """Error response schema for use in FastAPI's `responses` parameter."""
+    """Body every error response carries, and the schema documenting it in OpenAPI."""
 
     success: Literal[False]
     error: str
@@ -50,7 +50,7 @@ class ErrorResponse(Exception):
     def __init__(
         self,
         error: str,
-        status_code: int = HTTPStatus.BAD_REQUEST,
+        status_code: HTTPStatus = HTTPStatus.BAD_REQUEST,
         *,
         code: StrEnum | None = None,
     ) -> None:
@@ -219,7 +219,7 @@ def error_response_handler(_: Request, exc: ErrorResponse) -> JSONResponse:
 
 
 def general_exception_handler(_: Request, exc: Exception) -> JSONResponse:
-    """Handle all unhandled exceptions."""
+    """Report a fault the application did not handle, keeping its detail out of the body."""
 
     logger.exception(exc)
 

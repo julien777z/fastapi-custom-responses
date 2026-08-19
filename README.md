@@ -9,16 +9,14 @@ Provides normalized response objects and error handling for FastAPI applications
 - A stable `code` naming the condition, typed as an enum.
 - `fastapi_responses` to build FastAPI's `responses` mapping, documenting your codes in OpenAPI.
 - Generic `Response[T]`, `SuccessResponse`, and `PaginatedResponse[T]` envelopes for success payloads.
-- `ErrorResponseModel` for documenting error responses in OpenAPI.
+- `ErrorResponseModel` as both the error body the handlers emit and the schema documenting it.
 - `ErrorResponse.from_status_code` for an error carrying a status's standard HTTP phrase.
 
-## Installation
+## Quick Start
 
 ```bash
 pip install fastapi-custom-responses
 ```
-
-## Quick Start
 
 ```py
 from http import HTTPStatus

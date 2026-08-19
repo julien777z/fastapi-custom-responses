@@ -124,7 +124,7 @@ class TestConstrainedValidationErrors:
     ) -> None:
         """Test that constrained field violations produce specific error messages."""
 
-        payload = {**VALID_CONSTRAINED_PAYLOAD.model_dump(mode="json"), **payload_override}
+        payload = {**VALID_CONSTRAINED_PAYLOAD, **payload_override}
         response = await client.post("/validate-constrained", json=payload)
 
         assert response.status_code == HTTPStatus.BAD_REQUEST
@@ -134,7 +134,7 @@ class TestConstrainedValidationErrors:
     async def test_enum_includes_expected_values(self, client: AsyncClient) -> None:
         """Test that enum error includes the allowed values."""
 
-        payload = {**VALID_CONSTRAINED_PAYLOAD.model_dump(mode="json"), "color": "purple"}
+        payload = {**VALID_CONSTRAINED_PAYLOAD, "color": "purple"}
         response = await client.post("/validate-constrained", json=payload)
 
         assert response.status_code == HTTPStatus.BAD_REQUEST
@@ -156,9 +156,7 @@ class TestConstrainedValidationErrors:
     async def test_valid_constrained_request_succeeds(self, client: AsyncClient) -> None:
         """Test that a valid request with all constraints met succeeds."""
 
-        response = await client.post(
-            "/validate-constrained", json=VALID_CONSTRAINED_PAYLOAD.model_dump(mode="json")
-        )
+        response = await client.post("/validate-constrained", json=VALID_CONSTRAINED_PAYLOAD)
 
         assert response.status_code == HTTPStatus.OK
         data = response.json()

@@ -72,9 +72,9 @@ SECRET_TOKEN: Final[str] = "sk-live-must-never-reach-the-wire"
 
 SAMPLE_PAYLOAD: Final[ValidationPayload] = ValidationPayload(name="Alice", age=30, email="alice@example.com")
 
-VALID_CONSTRAINED_PAYLOAD: Final[ConstrainedPayload] = ConstrainedPayload(
+VALID_CONSTRAINED_PAYLOAD: Final[dict[str, Any]] = ConstrainedPayload(
     username="alice", score=50, rating=2.5, color=Color.RED, tags=["a"]
-)
+).model_dump(mode="json")
 
 
 class RaisedErrorCase(BaseModel):
