@@ -3,7 +3,7 @@ import subprocess
 
 
 def main() -> None:
-    """Commit the version bump, tag it, and push both to the current branch."""
+    """Commit the version bump and push it atomically with its tag."""
 
     parser = argparse.ArgumentParser()
 

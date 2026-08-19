@@ -186,7 +186,7 @@ def format_validation_errors(exc: RequestValidationError) -> str:
 def error_json_response(
     status_code: int, error: str, code: str | None, headers: Mapping[str, str] | None = None
 ) -> JSONResponse:
-    """Build the standard `{success: false, error: ..., code: ...}` JSON response."""
+    """Build the standard `{success: false, error: ..., code: ...}` response, carrying any given headers."""
 
     response = ErrorResponseModel(success=False, error=error, code=code)
     content = response.model_dump(mode="json", exclude_none=True)
