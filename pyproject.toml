@@ -1,42 +1,50 @@
 [project]
 name = "fastapi-custom-responses"
 version = "0.1.4"
-description = "FastAPI Custom Responses"
+description = "Normalized response envelopes and error handling for FastAPI applications."
 authors = [
     { name = "Julien Kmec", email = "me@julien.dev" },
 ]
 readme = "README.md"
-license = {file = "LICENSE"}
-homepage = "https://github.com/julien777z/fastapi-custom-responses"
-packages = [{include = "fastapi_custom_responses"}]
-requires-python = ">=3.11,<3.15"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.12,<3.15"
 dependencies = [
     "pydantic>=2.13.4",
-    "fastapi[standard]>=0.139.0",
+    "fastapi>=0.139.0",
     "pydantic-super-model>=2.0.0",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "black>=26.5.1,<27.0.0",
+    "isort>=8.0.1,<9.0.0",
+    "pylint>=4.0.6,<5.0.0",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "httpx>=0.28.1",
+]
+
+[project.urls]
+Homepage = "https://github.com/julien777z/fastapi-custom-responses"
+
 [tool.black]
 line-length = 110
-target-version = ["py312"]
+target-version = ["py312", "py313"]
 
 [tool.isort]
 profile = "black"
 line_length = 110
 
-[project.optional-dependencies]
-dev = [
-    "black (>=26.5.1,<27.0.0)",
-    "isort (>=8.0.1,<9.0.0)",
-    "pylint (>=4.0.6,<5.0.0)",
-    "pytest (>=9.1.1)",
-    "pytest-asyncio (>=1.4.0)",
-    "httpx (>=0.28.1)",
-]
+[tool.pylint.format]
+max-line-length = 110
+
+[tool.pylint.messages_control]
+disable = ["missing-module-docstring"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 
 [build-system]
-requires = ["poetry-core", "setuptools"]
+requires = ["poetry-core>=2.1.0"]
 build-backend = "poetry.core.masonry.api"

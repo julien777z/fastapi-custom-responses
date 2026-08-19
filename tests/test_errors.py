@@ -1,66 +1,79 @@
 from http import HTTPStatus
+from inspect import Parameter, signature
+from typing import Any
 
 import pytest
+from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from httpx import AsyncClient
+from pydantic import ValidationError
 
-from fastapi_custom_responses.errors import format_field_location, format_single_error
-
-VALID_CONSTRAINED_PAYLOAD: dict = {
-    "username": "alice",
-    "score": 50,
-    "rating": 2.5,
-    "color": "red",
-    "tags": ["a"],
-}
+from fastapi_custom_responses import (
+    DefaultErrorCode,
+    ErrorResponse,
+    ErrorResponseModel,
+    SuccessResponse,
+    fastapi_responses,
+)
+from fastapi_custom_responses.errors import (
+    format_field_location,
+    format_single_error,
+    format_validation_errors,
+)
+from tests.conftest import (
+    RAISED_ERROR_CASES,
+    SECRET_TOKEN,
+    VALID_CONSTRAINED_PAYLOAD,
+    AccessErrorCode,
+    RaisedErrorCase,
+)
 
 
 class TestValidationErrors:
     """Tests for Pydantic validation error handling."""
 
-    client: AsyncClient
-
-    @pytest.mark.asyncio
-    async def test_validation_error_missing_field(self) -> None:
+    async def test_validation_error_missing_field(self, client: AsyncClient) -> None:
         """Test that POST with missing required field returns 400 with human-readable message."""
 
-        response = await self.client.post("/validate", json={"name": "John", "age": 30})
+        response = await client.post("/validate", json={"name": "John", "age": 30})
 
         assert response.status_code == HTTPStatus.BAD_REQUEST
-        data = response.json()
-        assert data["success"] is False
-        assert "email" in data["error"]
-        assert "required" in data["error"]
+        assert response.json() == {
+            "success": False,
+            "error": "Field 'email' is required",
+            "code": "validation_error",
+        }
 
-    @pytest.mark.asyncio
-    async def test_validation_error_wrong_type(self) -> None:
+    async def test_validation_error_wrong_type(self, client: AsyncClient) -> None:
         """Test that POST with wrong type returns 400 with human-readable message."""
 
-        response = await self.client.post(
+        response = await client.post(
             "/validate", json={"name": "John", "age": "not-a-number", "email": "test@example.com"}
         )
 
         assert response.status_code == HTTPStatus.BAD_REQUEST
-        data = response.json()
-        assert data["success"] is False
-        assert "age" in data["error"]
-        assert "integer" in data["error"]
+        assert response.json() == {
+            "success": False,
+            "error": "Field 'age' must be a valid integer",
+            "code": "validation_error",
+        }
 
-    @pytest.mark.asyncio
-    async def test_validation_error_multiple_errors(self) -> None:
+    async def test_validation_error_multiple_errors(self, client: AsyncClient) -> None:
         """Test that POST with multiple errors returns combined message."""
 
-        response = await self.client.post("/validate", json={"name": 123})
+        response = await client.post("/validate", json={"name": 123})
 
         assert response.status_code == HTTPStatus.BAD_REQUEST
-        data = response.json()
-        assert data["success"] is False
-        assert "age" in data["error"] or "email" in data["error"]
+        assert response.json() == {
+            "success": False,
+            "error": ("Field 'name' must be a string. Field 'age' is required. Field 'email' is required"),
+            "code": "validation_error",
+        }
 
-    @pytest.mark.asyncio
-    async def test_validation_error_invalid_json(self) -> None:
+    async def test_validation_error_invalid_json(self, client: AsyncClient) -> None:
         """Test that POST with invalid JSON returns 400."""
 
-        response = await self.client.post(
+        response = await client.post(
             "/validate", content="not valid json", headers={"Content-Type": "application/json"}
         )
 
@@ -68,11 +81,10 @@ class TestValidationErrors:
         data = response.json()
         assert data["success"] is False
 
-    @pytest.mark.asyncio
-    async def test_valid_request_succeeds(self) -> None:
+    async def test_valid_request_succeeds(self, client: AsyncClient) -> None:
         """Test that valid request succeeds."""
 
-        response = await self.client.post(
+        response = await client.post(
             "/validate", json={"name": "John", "age": 30, "email": "john@example.com"}
         )
 
@@ -84,9 +96,6 @@ class TestValidationErrors:
 class TestConstrainedValidationErrors:
     """Tests for constraint-aware validation error messages."""
 
-    client: AsyncClient
-
-    @pytest.mark.asyncio
     @pytest.mark.parametrize(
         ("payload_override", "expected_error"),
         [
@@ -110,140 +119,231 @@ class TestConstrainedValidationErrors:
             "list_too_long",
         ],
     )
-    async def test_constrained_field_error(self, payload_override: dict, expected_error: str) -> None:
+    async def test_constrained_field_error(
+        self, client: AsyncClient, payload_override: dict[str, Any], expected_error: str
+    ) -> None:
         """Test that constrained field violations produce specific error messages."""
 
         payload = {**VALID_CONSTRAINED_PAYLOAD, **payload_override}
-        response = await self.client.post("/validate-constrained", json=payload)
+        response = await client.post("/validate-constrained", json=payload)
 
         assert response.status_code == HTTPStatus.BAD_REQUEST
         data = response.json()
         assert data["error"] == expected_error
 
-    @pytest.mark.asyncio
-    async def test_enum_includes_expected_values(self) -> None:
+    async def test_enum_includes_expected_values(self, client: AsyncClient) -> None:
         """Test that enum error includes the allowed values."""
 
         payload = {**VALID_CONSTRAINED_PAYLOAD, "color": "purple"}
-        response = await self.client.post("/validate-constrained", json=payload)
+        response = await client.post("/validate-constrained", json=payload)
 
         assert response.status_code == HTTPStatus.BAD_REQUEST
-        data = response.json()
-        assert "color" in data["error"]
-        assert "must be one of" in data["error"]
+        assert response.json() == {
+            "success": False,
+            "error": "Field 'color' must be one of: 'red', 'green' or 'blue'",
+            "code": "validation_error",
+        }
 
-    @pytest.mark.asyncio
-    async def test_value_error_strips_pydantic_prefix(self) -> None:
+    async def test_value_error_strips_pydantic_prefix(self, client: AsyncClient) -> None:
         """Test that value_error strips the 'Value error, ' prefix Pydantic adds."""
 
-        response = await self.client.post("/validate-value-error", json={"code": "abc"})
+        response = await client.post("/validate-value-error", json={"code": "abc"})
 
         assert response.status_code == HTTPStatus.BAD_REQUEST
         data = response.json()
         assert data["error"] == "Code must be exactly 4 digits"
 
-    @pytest.mark.asyncio
-    async def test_valid_constrained_request_succeeds(self) -> None:
+    async def test_valid_constrained_request_succeeds(self, client: AsyncClient) -> None:
         """Test that a valid request with all constraints met succeeds."""
 
-        response = await self.client.post("/validate-constrained", json=VALID_CONSTRAINED_PAYLOAD)
+        response = await client.post("/validate-constrained", json=VALID_CONSTRAINED_PAYLOAD)
 
         assert response.status_code == HTTPStatus.OK
         data = response.json()
         assert data["success"] is True
 
 
-class TestErrorResponse:
-    """Tests for ErrorResponse exception handling."""
+class TestErrorEnvelope:
+    """Tests for the envelope every failing path renders."""
 
-    client: AsyncClient
+    @pytest.mark.parametrize(("case_name", "case"), RAISED_ERROR_CASES.items(), ids=RAISED_ERROR_CASES)
+    async def test_renders_the_error_envelope(
+        self, client: AsyncClient, case_name: str, case: RaisedErrorCase
+    ) -> None:
+        """Test that each failing path renders the envelope with its status and code."""
 
-    @pytest.mark.asyncio
-    async def test_error_response_custom_message(self) -> None:
-        """Test that raising ErrorResponse returns custom message."""
+        response = await client.get(f"/raise/{case_name}")
 
-        response = await self.client.get("/error-response")
+        assert response.status_code == case.status_code
+        assert response.json() == case.expected_body
 
-        assert response.status_code == HTTPStatus.BAD_REQUEST
-        data = response.json()
-        assert data["success"] is False
-        assert data["error"] == "Custom error message"
+    @pytest.mark.parametrize(
+        ("method", "path", "status_code"),
+        [
+            ("GET", "/no-such-route", HTTPStatus.NOT_FOUND),
+            ("POST", "/success-response", HTTPStatus.METHOD_NOT_ALLOWED),
+        ],
+        ids=["unknown_route", "wrong_method"],
+    )
+    async def test_a_routing_failure_renders_the_envelope(
+        self, client: AsyncClient, method: str, path: str, status_code: HTTPStatus
+    ) -> None:
+        """Test that the errors the router raises itself render the envelope like any other."""
 
-    @pytest.mark.asyncio
-    async def test_error_response_custom_status_code(self) -> None:
-        """Test that ErrorResponse can use different status codes."""
+        response = await client.request(method, path)
 
-        response = await self.client.get("/error-response-not-found")
+        assert response.status_code == status_code
+        assert response.json() == {"success": False, "error": status_code.phrase}
 
-        assert response.status_code == HTTPStatus.NOT_FOUND
-        data = response.json()
-        assert data["success"] is False
-        assert data["error"] == "Item not found"
+    async def test_the_headers_an_http_exception_carries_reach_the_client(self, client: AsyncClient) -> None:
+        """Test that headers attached to an HTTP exception survive the envelope conversion."""
 
-    @pytest.mark.asyncio
-    async def test_error_response_from_status_code(self) -> None:
-        """Test that ErrorResponse.from_status_code() uses predefined messages."""
+        response = await client.post("/success-response")
 
-        response = await self.client.get("/error-response-from-status")
+        assert response.status_code == HTTPStatus.METHOD_NOT_ALLOWED
+        assert response.headers["allow"] == "GET"
 
-        assert response.status_code == HTTPStatus.FORBIDDEN
-        data = response.json()
-        assert data["success"] is False
-        assert data["error"] == "You don't have permission to perform this action"
+    async def test_a_model_that_fails_to_validate_reports_generically(self, client: AsyncClient) -> None:
+        """Test that a model failing to validate inside the app never echoes what it was given."""
 
+        response = await client.get("/invalid-model")
 
-class TestHTTPExceptionHandler:
-    """Tests for HTTPException handling."""
-
-    client: AsyncClient
-
-    @pytest.mark.asyncio
-    async def test_http_exception_handler(self) -> None:
-        """Test that HTTPException is formatted correctly."""
-
-        response = await self.client.get("/http-exception")
-
-        assert response.status_code == HTTPStatus.UNAUTHORIZED
-        data = response.json()
-        assert data["success"] is False
-        assert data["error"] == "Not authenticated"
+        assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
+        assert response.json() == {
+            "success": False,
+            "error": HTTPStatus.INTERNAL_SERVER_ERROR.phrase,
+            "code": "internal_error",
+        }
+        assert SECRET_TOKEN not in response.text
 
 
-class TestValueErrorHandler:
-    """Tests for ValueError handling."""
+class TestErrorResponseCode:
+    """Tests for the error code carried by ErrorResponse."""
 
-    client: AsyncClient
+    def test_code_is_keyword_only(self) -> None:
+        """Test that the error code can only be supplied by keyword."""
 
-    @pytest.mark.asyncio
-    async def test_value_error_handler(self) -> None:
-        """Test that ValueError returns str(exc)."""
+        assert signature(ErrorResponse).parameters["code"].kind is Parameter.KEYWORD_ONLY
 
-        response = await self.client.get("/value-error")
+    def test_an_unnamed_error_carries_no_code(self) -> None:
+        """Test that an error raised without a code carries none rather than restating its status."""
 
-        assert response.status_code == HTTPStatus.BAD_REQUEST
-        data = response.json()
-        assert data["success"] is False
-        assert data["error"] == "Invalid value provided"
+        assert ErrorResponse("boom", HTTPStatus.FORBIDDEN).code is None
 
 
-class TestGeneralExceptionHandler:
-    """Tests for unhandled exception handling."""
+class TestErrorResponseModel:
+    """Tests for the documented error response schema."""
 
-    client: AsyncClient
+    def test_code_is_optional(self) -> None:
+        """Test that ErrorResponseModel leaves the code unset when none is given."""
 
-    @pytest.mark.asyncio
-    async def test_general_exception_handler(self) -> None:
-        """Test that unhandled exceptions return generic 500 message."""
+        assert ErrorResponseModel(success=False, error="Denied").code is None
 
-        try:
-            response = await self.client.get("/general-exception")
-            assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
-            data = response.json()
-            assert data["success"] is False
-            assert data["error"] == "An unexpected error occurred"
-        except RuntimeError as e:
-            # In test mode, FastAPI may re-raise the exception
-            assert str(e) == "Something went wrong"
+    def test_json_schema_exposes_code_as_optional(self) -> None:
+        """Test that the generated JSON schema lists code as an optional property."""
+
+        schema = ErrorResponseModel.model_json_schema()
+
+        assert "code" in schema["properties"]
+        assert "code" not in schema["required"]
+
+    def test_parametrized_accepts_a_member(self) -> None:
+        """Test that a parametrized model accepts a member of its code enum."""
+
+        model = ErrorResponseModel[AccessErrorCode](
+            success=False, error="Denied", code=AccessErrorCode.PERMISSION_DENIED
+        )
+
+        assert model.code is AccessErrorCode.PERMISSION_DENIED
+
+    def test_parametrized_rejects_an_unknown_code(self) -> None:
+        """Test that a parametrized model rejects a code outside its enum."""
+
+        with pytest.raises(ValidationError):
+            ErrorResponseModel[AccessErrorCode](success=False, error="Denied", code="bogus")
+
+    def test_parametrized_schema_enumerates_its_codes(self) -> None:
+        """Test that parametrizing the model enumerates the code enum in its schema."""
+
+        schema = ErrorResponseModel[AccessErrorCode].model_json_schema()
+
+        assert schema["$defs"]["AccessErrorCode"]["enum"] == ["permission_denied", "account_suspended"]
+
+
+class TestFormatValidationErrors:
+    """Tests for combining validation errors into one message."""
+
+    def test_falls_back_when_there_are_no_errors(self) -> None:
+        """Test that an empty validation error list renders the generic bad request message."""
+
+        assert format_validation_errors(RequestValidationError([])) == HTTPStatus.BAD_REQUEST.phrase
+
+
+class TestFastapiResponses:
+    """Tests for the FastAPI responses mapping helper."""
+
+    def test_error_enum_parametrizes_the_envelope(self) -> None:
+        """Test that an error code enum parametrizes the error envelope."""
+
+        responses = fastapi_responses({HTTPStatus.FORBIDDEN: AccessErrorCode})
+
+        assert responses[HTTPStatus.FORBIDDEN] == {"model": ErrorResponseModel[AccessErrorCode]}
+
+    def test_none_documents_the_bare_envelope(self) -> None:
+        """Test that None documents the error envelope without specific codes."""
+
+        responses = fastapi_responses({HTTPStatus.NOT_FOUND: None})
+
+        assert responses[HTTPStatus.NOT_FOUND] == {"model": ErrorResponseModel}
+
+    def test_a_union_of_enums_parametrizes_the_envelope(self) -> None:
+        """Test that a union of error code enums documents every code the status can carry."""
+
+        responses = fastapi_responses({HTTPStatus.BAD_REQUEST: AccessErrorCode | DefaultErrorCode})
+
+        assert responses[HTTPStatus.BAD_REQUEST] == {
+            "model": ErrorResponseModel[AccessErrorCode | DefaultErrorCode]
+        }
+
+    def test_success_model_is_passed_through(self) -> None:
+        """Test that a success envelope is documented as given."""
+
+        responses = fastapi_responses({HTTPStatus.ACCEPTED: SuccessResponse})
+
+        assert responses[HTTPStatus.ACCEPTED] == {"model": SuccessResponse}
+
+
+class TestOpenApiSchema:
+    """Tests for the OpenAPI document the library's models produce."""
+
+    def test_documents_codes_and_envelopes_per_endpoint(self, documented_app: FastAPI) -> None:
+        """Test that each code enum and envelope becomes its own named component."""
+
+        spec = documented_app.openapi()
+        schemas = spec["components"]["schemas"]
+        responses = spec["paths"]["/reports"]["post"]["responses"]
+
+        assert schemas["AccessErrorCode"]["enum"] == ["permission_denied", "account_suspended"]
+        assert "Response_ValidationPayload_" in schemas
+
+        forbidden = responses[str(int(HTTPStatus.FORBIDDEN))]
+        envelope = forbidden["content"]["application/json"]["schema"]["$ref"].rsplit("/", 1)[-1]
+
+        assert schemas[envelope]["properties"]["code"]["anyOf"] == [
+            {"$ref": "#/components/schemas/AccessErrorCode"},
+            {"type": "null"},
+        ]
+
+        bad_request = responses[str(int(HTTPStatus.BAD_REQUEST))]
+        union_envelope = bad_request["content"]["application/json"]["schema"]["$ref"].rsplit("/", 1)[-1]
+
+        assert schemas[union_envelope]["properties"]["code"]["anyOf"] == [
+            {"$ref": "#/components/schemas/AccessErrorCode"},
+            {"$ref": "#/components/schemas/DefaultErrorCode"},
+            {"type": "null"},
+        ]
+        assert schemas["DefaultErrorCode"]["enum"] == ["validation_error", "invalid_value", "internal_error"]
+        assert forbidden["description"] == HTTPStatus.FORBIDDEN.phrase
 
 
 class TestFormatFieldLocation:
@@ -257,10 +357,12 @@ class TestFormatFieldLocation:
             (("path", "id"), "id"),
             (("body", "address", "city"), "address.city"),
             (("body", "items", 0, "name"), "items.0.name"),
+            (("body",), "body"),
+            ((), "field"),
         ],
-        ids=["body", "query", "path", "nested_object", "nested_array"],
+        ids=["body", "query", "path", "nested_object", "nested_array", "only_prefix", "empty"],
     )
-    def test_format_field_location(self, loc: tuple, expected: str) -> None:
+    def test_joins_the_field_parts(self, loc: tuple, expected: str) -> None:
         """Test that field location tuples are formatted into human-readable names."""
 
         assert format_field_location(loc) == expected
@@ -272,6 +374,14 @@ class TestFormatSingleError:
     @pytest.mark.parametrize(
         ("error", "expected"),
         [
+            (
+                {"loc": ("body", "x"), "type": "unrecognized", "msg": "Something"},
+                "Field 'x': Something",
+            ),
+            (
+                {"loc": ("body", "x"), "type": "unrecognized"},
+                "Field 'x' is invalid",
+            ),
             (
                 {"loc": ("body", "email"), "type": "missing", "msg": "Field required"},
                 "Field 'email' is required",
@@ -425,6 +535,8 @@ class TestFormatSingleError:
             ),
         ],
         ids=[
+            "unknown_type_with_message",
+            "unknown_type_without_message",
             "missing",
             "int_parsing",
             "string_type",
@@ -447,7 +559,7 @@ class TestFormatSingleError:
             "comparison_without_ctx",
         ],
     )
-    def test_format_single_error(self, error: dict, expected: str) -> None:
+    def test_formats_the_message(self, error: dict[str, Any], expected: str) -> None:
         """Test that validation error dicts are formatted into human-readable messages."""
 
         assert format_single_error(error) == expected

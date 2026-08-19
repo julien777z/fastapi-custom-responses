@@ -1,19 +1,35 @@
 # FastAPI Custom Responses
 
-Provides normalized response objects and error handling for FastAPI applications. All errors — validation, HTTP, and unhandled exceptions — are returned in a consistent `{ "success": false, "error": "..." }` format with human-readable messages.
+Provides normalized response objects and error handling for FastAPI applications.
 
-## Installation
+## Features
+
+- One error envelope for every failure: validation, `HTTPException`, `ValueError`, and unhandled exceptions.
+- Pydantic validation errors rewritten as human-readable messages instead of raw error arrays.
+- A stable `code` naming the condition, typed as an enum.
+- `fastapi_responses` to build FastAPI's `responses` mapping, documenting your codes in OpenAPI.
+- Generic `Response[T]`, `SuccessResponse`, and `PaginatedResponse[T]` envelopes for success payloads.
+- `ErrorResponseModel` as both the error body the handlers emit and the schema documenting it.
+- `ErrorResponse.from_status_code` for an error carrying a status's standard HTTP phrase.
+
+## Quick Start
 
 ```bash
 pip install fastapi-custom-responses
 ```
 
-## Quick Start
-
 ```py
 from http import HTTPStatus
-from fastapi_custom_responses import EXCEPTION_HANDLERS, ErrorResponse, ErrorResponseModel, Response, SuccessResponse
-from fastapi import APIRouter, FastAPI, Request
+from fastapi_custom_responses import (
+    EXCEPTION_HANDLERS,
+    DefaultErrorCode,
+    ErrorResponse,
+    Response,
+    fastapi_responses,
+)
+from fastapi import APIRouter, FastAPI
+from enum import StrEnum
+from pydantic import BaseModel
 
 router = APIRouter()
 
@@ -24,18 +40,22 @@ app = FastAPI(
     exception_handlers=EXCEPTION_HANDLERS,
 )
 
-class Data(Response):
+class Data(BaseModel):
     example: str
+
+class OrderErrorCode(StrEnum):
+    ORDER_LOCKED = "order_locked"
+    PAYMENT_DECLINED = "payment_declined"
 
 @router.get(
     "/",
     response_model=Response[Data],
-    responses={
-        400: {"model": ErrorResponseModel, "description": "Bad request"},
-        500: {"model": ErrorResponseModel, "description": "Internal server error"},
-    },
+    responses=fastapi_responses({
+        HTTPStatus.FORBIDDEN: OrderErrorCode,
+        HTTPStatus.INTERNAL_SERVER_ERROR: DefaultErrorCode,
+    }),
 )
-async def index(_: Request) -> Response[Data]:
+async def index() -> Response[Data]:
     """Index route."""
 
     return Response(
@@ -43,35 +63,69 @@ async def index(_: Request) -> Response[Data]:
         data=Data(example="hello"),
     )
 
-@router.get("/return-error")
-async def error_route(_: Request) -> Response:
+@router.get(
+    "/return-error",
+    responses=fastapi_responses({HTTPStatus.FORBIDDEN: OrderErrorCode}),
+)
+async def error_route() -> Response[Data]:
     """Error route."""
 
-    raise ErrorResponse(error="Your request is invalid.", status_code=HTTPStatus.BAD_REQUEST)
+    raise ErrorResponse(
+        error="This order is locked.",
+        status_code=HTTPStatus.FORBIDDEN,
+        code=OrderErrorCode.ORDER_LOCKED,
+    )
 ```
 
-**Note:** When using OpenAPI generators, use `SuccessResponse` instead of `Response` if your endpoint has no data to return.
+## Response Envelopes
+
+| Envelope | Body |
+|----------|------|
+| `Response[T]` | `{ "success": true, "data": { ... } }` |
+| `SuccessResponse` | `{ "success": true }` |
+| `PaginatedResponse[T]` | `{ "success": true, "data": [ ... ], "meta": { "offset": 0, "limit": 10, "total": 1 } }` |
+
+When using OpenAPI generators, use `SuccessResponse` instead of `Response` if your endpoint has no data to return.
+
+Build a paginated response from a page of items and the bounds it was read with:
+
+```py
+return PaginatedResponse.build_page(items, offset=offset, limit=limit, total=total)
+```
 
 ## Error Normalization
 
-Passing `EXCEPTION_HANDLERS` to your FastAPI app registers handlers that normalize **all** errors into a consistent JSON shape:
+Register the handlers when you create the app:
+
+```py
+from fastapi import FastAPI
+from fastapi_custom_responses import EXCEPTION_HANDLERS
+
+app = FastAPI(exception_handlers=EXCEPTION_HANDLERS)
+```
+
+Every error then normalizes into one JSON shape:
 
 ```json
 {
   "success": false,
-  "error": "Human-readable error message"
+  "error": "Human-readable error message",
+  "code": "stable_error_identifier"
 }
 ```
 
 ### Handled Exception Types
 
-| Exception | Status Code | Behavior |
-|-----------|-------------|----------|
-| `ErrorResponse` | Custom (default `400`) | Uses the provided `error` message directly |
-| `RequestValidationError` | `400` | Pydantic validation errors are converted to human-readable messages (see below) |
-| `HTTPException` | From exception | Uses the exception `detail` as the error message |
-| `ValueError` | `400` | Uses `str(exc)` as the error message |
-| `Exception` (catch-all) | `500` | Returns a generic `"An unexpected error occurred"` message |
+| Exception | Status Code | Code | Behavior |
+|-----------|-------------|------|----------|
+| `ErrorResponse` | Custom (default `400`) | Yours, if you pass one | Uses the provided `error` message directly |
+| `RequestValidationError` | `400` | `validation_error` | Pydantic validation errors are converted to human-readable messages (see below) |
+| `HTTPException` | From exception | None | Uses the exception `detail`; also covers the `404` and `405` the router raises itself |
+| `ValueError` | `400` | `invalid_value` | Uses `str(exc)` as the error message |
+| `ValidationError` (Pydantic) | `500` | `internal_error` | A model failed to validate inside your app; logged and reported generically so its details stay out of the body |
+| `Exception` (catch-all) | `500` | `internal_error` | Reports the status phrase so the exception stays out of the body |
+
+`code` is present when a condition was named — by you, or by one of the library's own handlers. It is absent otherwise, rather than restating the status.
 
 ### Raising Errors
 
@@ -84,22 +138,19 @@ from fastapi_custom_responses import ErrorResponse
 raise ErrorResponse(error="Resource not found", status_code=HTTPStatus.NOT_FOUND)
 ```
 
-You can also create one from a status code alone, which maps to a default message:
+Or create one from the status alone, which carries that status's standard HTTP phrase:
 
 ```py
 raise ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN)
-# → { "success": false, "error": "You don't have permission to perform this action" }
+# { "success": false, "error": "Forbidden" }
 ```
 
-Default messages for common status codes:
+The library ships no wording of its own, so pass `error` whenever the phrase is too terse for the reader:
 
-| Status Code | Default Message |
-|-------------|-----------------|
-| `401` | `"Authentication required"` |
-| `403` | `"You don't have permission to perform this action"` |
-| `404` | `"Resource not found"` |
-| `400` | `"Invalid request"` |
-| `500` | `"An unexpected error occurred"` |
+```py
+raise ErrorResponse(error="That name is already taken", status_code=HTTPStatus.CONFLICT)
+# { "success": false, "error": "That name is already taken" }
+```
 
 ### Validation Error Normalization
 
@@ -125,7 +176,8 @@ When a request fails Pydantic validation, FastAPI normally returns a verbose JSO
 ```json
 {
   "success": false,
-  "error": "Field 'email' is required"
+  "error": "Field 'email' is required",
+  "code": "validation_error"
 }
 ```
 
@@ -134,7 +186,8 @@ When multiple fields fail validation, messages are joined with periods:
 ```json
 {
   "success": false,
-  "error": "Field 'email' is required. Field 'age' must be a valid integer"
+  "error": "Field 'email' is required. Field 'age' must be a valid integer",
+  "code": "validation_error"
 }
 ```
 
@@ -147,7 +200,7 @@ Supported Pydantic error types and their human-readable formats:
 | `int_type` / `int_parsing` | `Field 'age' must be a valid integer` |
 | `float_type` / `float_parsing` | `Field 'price' must be a valid number` |
 | `bool_type` / `bool_parsing` | `Field 'active' must be a boolean` |
-| `enum` | `Field 'status' must be one of: active, inactive` |
+| `enum` | `Field 'status' must be one of: 'active' or 'inactive'` |
 | `uuid_type` / `uuid_parsing` | `Field 'id' must be a valid UUID` |
 | `string_too_short` | `Field 'name' must be at least 3 characters` |
 | `string_too_long` | `Field 'name' must be at most 50 characters` |
@@ -158,3 +211,85 @@ Supported Pydantic error types and their human-readable formats:
 | `json_invalid` | `Invalid JSON in request body` |
 
 Any unrecognized error types fall back to the Pydantic error message prefixed with the field name.
+
+## Error Codes
+
+`error` is human-readable and may be reworded or localized. `code` is the stable identifier clients branch on. Declare your codes as a `StrEnum`, so a module that never imports this package can own them:
+
+```py
+from enum import StrEnum
+
+class OrderErrorCode(StrEnum):
+    ORDER_LOCKED = "order_locked"
+    PAYMENT_DECLINED = "payment_declined"
+```
+
+The library's own handlers name their conditions too; import `DefaultErrorCode` to branch on `validation_error`, `invalid_value`, and `internal_error`.
+
+Pass a member when raising; both `ErrorResponse` and `from_status_code` accept it:
+
+```py
+raise ErrorResponse(
+    error="This order is locked",
+    status_code=HTTPStatus.FORBIDDEN,
+    code=OrderErrorCode.ORDER_LOCKED,
+)
+# { "success": false, "error": "This order is locked", "code": "order_locked" }
+
+raise ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN, code=OrderErrorCode.ORDER_LOCKED)
+```
+
+## Documenting Responses
+
+`fastapi_responses` builds FastAPI's `responses` mapping. Give it an error code enum, a union of enums, `None` for the bare error envelope, or a success envelope:
+
+```py
+from fastapi_custom_responses import DefaultErrorCode, Response, SuccessResponse, fastapi_responses
+
+@router.post(
+    "/reports",
+    responses=fastapi_responses({
+        HTTPStatus.CREATED: Response[Report],
+        HTTPStatus.ACCEPTED: SuccessResponse,
+        HTTPStatus.BAD_REQUEST: DefaultErrorCode,
+        HTTPStatus.FORBIDDEN: OrderErrorCode,
+        HTTPStatus.NOT_FOUND: None,
+    }),
+)
+```
+
+Each error code enum becomes its own named schema in the OpenAPI document, so generated clients get a real union type per domain rather than a bare string:
+
+```json
+"OrderErrorCode": { "type": "string", "enum": ["order_locked", "payment_declined"], "title": "OrderErrorCode" }
+```
+
+`400` and `500` are answered by the library's own handlers, so document `DefaultErrorCode` there. Where a status carries your codes as well as theirs, union the two — `OrderErrorCode | DefaultErrorCode` — so the schema lists every value that status can emit.
+
+FastAPI describes each entry with its status phrase. Entries needing `headers`, custom media types, or `links` are written directly and merge with the result:
+
+```py
+responses={**fastapi_responses({HTTPStatus.FORBIDDEN: OrderErrorCode}), HTTPStatus.NOT_MODIFIED: {"headers": {...}}}
+```
+
+## Local Development
+
+Install the project with its development dependencies:
+
+```bash
+poetry install -E dev
+```
+
+Run the test suite:
+
+```bash
+poetry run pytest tests/ -v
+```
+
+Format and lint:
+
+```bash
+poetry run black .
+poetry run isort .
+poetry run pylint fastapi_custom_responses/ .github/scripts/
+```

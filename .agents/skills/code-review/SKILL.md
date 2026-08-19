@@ -256,9 +256,9 @@ Only in fix mode. Every reported finding is CONFIRMED, because step 4 refutes ev
 
 "A test patches or imports that symbol" is likewise never grounds to skip or soften a fix. Tests follow application code, not the reverse: when the fix moves, renames, or absorbs a symbol that tests patch, mock, or import, updating those patch targets and fixtures is part of the fix, and the affected suite is rerun to prove the reworked tests still pass.
 
-When a requested change replaces a runtime or data contract, treat a retained legacy alias or fallback as a defect unless the user explicitly authorizes compatibility in the current request. Approval is needed to **keep** compatibility, not to break it: stop and ask before a fix that would introduce or preserve a backward-compatible path, a legacy shape, or a dual-write for already-deployed behavior.
+Never introduce or preserve backward-compatible code. A legacy alias, fallback, old request or response shape, deprecated parameter, transition adapter, or dual read/write path is a defect when the requested change replaces that behavior. Remove the replaced behavior outright, update every consumer in the same change, and write the migration when it touches the database.
 
-Changing the contract outright needs no such approval. Rewrite the proto, the response model, or the column, update every consumer in the same change, and write the migration when it touches the database — that is the fix, not a reason to escalate. None of this applies to code organization, file moves, module paths, or internal package exports, which were never gated.
+Do not add a compatibility path even when a user asks for one; escalate that conflict rather than implementing it under this skill. This policy applies only to direct `code-review` fix-mode invocations and does not affect `code-review-loop`. None of this applies to code organization, file moves, module paths, or internal package exports, which were never gated.
 
 Work findings in severity order:
 
@@ -266,6 +266,8 @@ Work findings in severity order:
 2. Follow the repository's own rules in the fix itself, the same ones the Rules lens checks.
 3. When the minimal fix does not resolve the finding, fix its cause. A defect whose root lies outside the diff is still this review's to fix, and a rule the code knowingly breaks is resolved by correcting one of them, not by recording the contradiction. Where two rules genuinely conflict, make the governing rule state the real contract rather than leaving code that violates it.
 4. Escalate only a decision that is genuinely the user's: a change to intended product behavior, or a choice between defensible designs that the diff does not settle. Ask the specific question through the host's question tool and act on the answer. An unanswered question is the only route to reporting a CONFIRMED finding unfixed, and the report must say what was asked.
+
+**When a fix redirects control flow, diff it against what it displaced.** A fix that routes an input to different code than before — a new dispatch key, a changed handler registration, a removed fallback, a reordered branch, a narrowed or widened type — inherits everything the old path did, not only the part the finding named. Read the displaced implementation first: it is usually short, and it is the specification the fix is replacing. Then send the same input through both paths and compare the complete observable result — status, body, headers, side effects, logs — rather than the one field the finding was about. A fix verified only on the field it targeted is how a review ships a regression in a field nobody looked at, and the next round pays for it. The regression test accompanying such a fix asserts that whole observable surface for the same reason.
 
 Preserve the requested behavior and any unrelated worktree changes. Re-review the fixed lines to confirm each correction holds, then re-report with an outcome per finding: `fixed`, `skipped`, or `no_change_needed`.
 

@@ -1,29 +1,20 @@
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from enum import StrEnum
 from http import HTTPStatus
-from typing import Final, Self
+from types import UnionType
+from typing import Any, Final, Literal, Self
 
-from fastapi import HTTPException, Request
-from fastapi.exceptions import RequestValidationError
+from fastapi import Request
+from fastapi.exceptions import RequestValidationError, StarletteHTTPException
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
-
-from fastapi_custom_responses.responses import Response
+from pydantic import BaseModel, ValidationError
 
 logger = logging.getLogger(__name__)
-
-ERROR_MESSAGES: Final[dict[int, str]] = {
-    HTTPStatus.UNAUTHORIZED: "Authentication required",
-    HTTPStatus.FORBIDDEN: "You don't have permission to perform this action",
-    HTTPStatus.NOT_FOUND: "Resource not found",
-    HTTPStatus.BAD_REQUEST: "Invalid request",
-    HTTPStatus.INTERNAL_SERVER_ERROR: "An unexpected error occurred",
-}
 
 SIMPLE_TYPE_MESSAGES: Final[dict[str, str]] = {
     "missing": "is required",
     "string_type": "must be a string",
-    "str_type": "must be a string",
     "int_type": "must be a valid integer",
     "int_parsing": "must be a valid integer",
     "float_type": "must be a valid number",
@@ -34,50 +25,63 @@ SIMPLE_TYPE_MESSAGES: Final[dict[str, str]] = {
     "uuid_parsing": "must be a valid UUID",
 }
 
+type ResponseSpec = type[StrEnum] | type[BaseModel] | UnionType | None
 
-class ErrorResponseModel(BaseModel):
-    """Pydantic model for error response schema. Use this in FastAPI's `responses` parameter to document the error response schema."""
 
-    success: bool
+class DefaultErrorCode(StrEnum):
+    """Codes for the conditions the library's own handlers detect."""
+
+    VALIDATION_ERROR = "validation_error"
+    INVALID_VALUE = "invalid_value"
+    INTERNAL_ERROR = "internal_error"
+
+
+class ErrorResponseModel[CodeT: str](BaseModel):
+    """Body every error response carries, and the schema documenting it in OpenAPI."""
+
+    success: Literal[False]
     error: str
+    code: CodeT | None = None
 
 
 class ErrorResponse(Exception):
-    """Standard error response that includes error message."""
+    """Exception carrying the message, status code, and code to render as an error response."""
 
-    def __init__(self, error: str, status_code: int = HTTPStatus.BAD_REQUEST) -> None:
-        """Initialize error response with message and status code."""
+    def __init__(
+        self,
+        error: str,
+        status_code: HTTPStatus = HTTPStatus.BAD_REQUEST,
+        *,
+        code: StrEnum | None = None,
+    ) -> None:
+        """Initialize error response with message, status code, and error code."""
 
         self.error = error
         self.status_code = status_code
+        self.code = code
 
         super().__init__(error)
 
     @classmethod
-    def from_status_code(cls, status_code: int) -> Self:
-        """Create an error response from a status code."""
+    def from_status_code(cls, status_code: HTTPStatus, *, code: StrEnum | None = None) -> Self:
+        """Create an error response carrying the standard phrase for a status code."""
 
-        return cls(
-            error=ERROR_MESSAGES.get(status_code, ERROR_MESSAGES[HTTPStatus.INTERNAL_SERVER_ERROR]),
-            status_code=status_code,
-        )
+        return cls(error=status_code.phrase, status_code=status_code, code=code)
 
 
 def format_field_location(loc: tuple[int | str, ...]) -> str:
     """Extract the field name from a validation error location tuple."""
 
-    # Filter out 'body', 'query', 'path' prefixes and join remaining parts
     field_parts = [str(part) for part in loc if part not in ("body", "query", "path", "header")]
 
     if not field_parts:
-        # If all parts were filtered out, use the last part of the original location
         return str(loc[-1]) if loc else "field"
 
     return ".".join(field_parts)
 
 
-def format_number(value: int | float) -> str:
-    """Format a numeric constraint value for display, stripping unnecessary '.0' from whole floats."""
+def format_constraint_value(value: int | float | str) -> str:
+    """Format a constraint value for display, stripping unnecessary '.0' from whole floats."""
 
     if isinstance(value, float) and value.is_integer():
         return str(int(value))
@@ -122,10 +126,13 @@ CONSTRAINT_RULES: Final[dict[str, ConstraintRule]] = {
     "less_than_equal": ConstraintRule(
         ctx_key="le", template="must be at most {value}", fallback="has an invalid value"
     ),
+    "enum": ConstraintRule(
+        ctx_key="expected", template="must be one of: {value}", fallback="has an invalid value"
+    ),
 }
 
 
-def format_constraint_error(field: str, ctx: dict, rule: ConstraintRule) -> str:
+def format_constraint_error(field: str, ctx: dict[str, Any], rule: ConstraintRule) -> str:
     """Format a constraint violation from its rule, falling back when the bound is absent from ctx."""
 
     value = ctx.get(rule.ctx_key)
@@ -134,10 +141,10 @@ def format_constraint_error(field: str, ctx: dict, rule: ConstraintRule) -> str:
 
     unit = "item" if value == 1 else "items"
 
-    return f"Field '{field}' {rule.template.format(value=format_number(value), unit=unit)}"
+    return f"Field '{field}' {rule.template.format(value=format_constraint_value(value), unit=unit)}"
 
 
-def format_single_error(error: dict) -> str:
+def format_single_error(error: dict[str, Any]) -> str:
     """Format a single Pydantic validation error into a human-readable message."""
 
     field = format_field_location(error.get("loc", ()))
@@ -153,18 +160,12 @@ def format_single_error(error: dict) -> str:
         return format_constraint_error(field, ctx, rule)
 
     match error_type:
-        case "enum":
-            expected = ctx.get("expected", "")
-            if expected:
-                return f"Field '{field}' must be one of: {expected}"
-            return f"Field '{field}' has an invalid value"
         case "value_error":
             # Pydantic prefixes with "Value error, " -- strip it
             return msg.removeprefix("Value error, ")
         case "json_invalid":
             return "Invalid JSON in request body"
         case _:
-            # For any other error type, use the Pydantic message with the field name
             if msg:
                 return f"Field '{field}': {msg}"
 
@@ -177,17 +178,20 @@ def format_validation_errors(exc: RequestValidationError) -> str:
     errors = exc.errors()
 
     if not errors:
-        return ERROR_MESSAGES[HTTPStatus.BAD_REQUEST]
+        return HTTPStatus.BAD_REQUEST.phrase
 
     return ". ".join(format_single_error(error) for error in errors)
 
 
-def error_json_response(status_code: int, error: str) -> JSONResponse:
-    """Build the standard `{success: false, error: ...}` JSON response."""
+def error_json_response(
+    status_code: int, error: str, code: str | None, headers: Mapping[str, str] | None = None
+) -> JSONResponse:
+    """Build the standard `{success: false, error: ..., code: ...}` response, carrying any given headers."""
 
-    response = Response(success=False, error=error)
+    response = ErrorResponseModel(success=False, error=error, code=code)
+    content = response.model_dump(mode="json", exclude_none=True)
 
-    return JSONResponse(status_code=status_code, content=response.model_dump(mode="json"))
+    return JSONResponse(status_code=status_code, content=content, headers=headers)
 
 
 def validation_exception_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
@@ -195,46 +199,62 @@ def validation_exception_handler(_: Request, exc: RequestValidationError) -> JSO
 
     logger.warning("Validation error: %s", exc.errors())
 
-    return error_json_response(HTTPStatus.BAD_REQUEST, format_validation_errors(exc))
-
-
-def value_error_handler(_: Request, exc: ValueError) -> JSONResponse:
-    """Handle value errors, e.g., Pydantic validation errors."""
-
-    logger.exception(exc)
-
-    return error_json_response(HTTPStatus.BAD_REQUEST, str(exc))
-
-
-def error_response_handler(_: Request, exc: ErrorResponse) -> JSONResponse:
-    """Convert ErrorResponse exceptions to proper JSONResponse objects."""
-
-    logger.info("ErrorResponse: %s - %s", exc.status_code, exc.error)
-
-    return error_json_response(exc.status_code, exc.error)
-
-
-def general_exception_handler(_: Request, exc: Exception) -> JSONResponse:
-    """Handle all unhandled exceptions."""
-
-    logger.exception(exc)
-
     return error_json_response(
-        HTTPStatus.INTERNAL_SERVER_ERROR, ERROR_MESSAGES[HTTPStatus.INTERNAL_SERVER_ERROR]
+        HTTPStatus.BAD_REQUEST, format_validation_errors(exc), DefaultErrorCode.VALIDATION_ERROR
     )
 
 
-def http_exception_handler(_: Request, exc: HTTPException) -> JSONResponse:
-    """Convert HTTPException to our standard error format."""
+def value_error_handler(_: Request, exc: ValueError) -> JSONResponse:
+    """Handle a value the application rejected, reporting it as a bad request."""
 
-    error_message = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+    logger.exception(exc)
 
-    return error_json_response(exc.status_code, error_message)
+    return error_json_response(HTTPStatus.BAD_REQUEST, str(exc), DefaultErrorCode.INVALID_VALUE)
+
+
+def error_response_handler(_: Request, exc: ErrorResponse) -> JSONResponse:
+    """Render an error the application raised deliberately, carrying the code it named."""
+
+    logger.info("ErrorResponse: %s - %s", exc.status_code, exc.error)
+
+    return error_json_response(exc.status_code, exc.error, exc.code)
+
+
+def general_exception_handler(_: Request, exc: Exception) -> JSONResponse:
+    """Report a fault the application did not handle, keeping its detail out of the body."""
+
+    logger.exception(exc)
+
+    status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+
+    return error_json_response(status_code, status_code.phrase, DefaultErrorCode.INTERNAL_ERROR)
+
+
+def http_exception_handler(_: Request, exc: StarletteHTTPException) -> JSONResponse:
+    """Convert an HTTP exception, including one the router raises, to the error envelope."""
+
+    return error_json_response(exc.status_code, str(exc.detail), None, headers=exc.headers)
+
+
+def documented_model(spec: ResponseSpec) -> type[BaseModel]:
+    """Return the model documenting one response: the given model, or the error envelope."""
+
+    if isinstance(spec, type) and issubclass(spec, BaseModel):
+        return spec
+
+    return ErrorResponseModel if spec is None else ErrorResponseModel[spec]
+
+
+def fastapi_responses(specs: dict[HTTPStatus, ResponseSpec]) -> dict[int | str, dict[str, Any]]:
+    """Build FastAPI's `responses` mapping from status codes and their models or error codes."""
+
+    return {status_code: {"model": documented_model(spec)} for status_code, spec in specs.items()}
 
 
 EXCEPTION_HANDLERS: dict[type[Exception], Callable[[Request, Exception], JSONResponse]] = {
-    HTTPException: http_exception_handler,
+    StarletteHTTPException: http_exception_handler,
     RequestValidationError: validation_exception_handler,
+    ValidationError: general_exception_handler,
     ValueError: value_error_handler,
     ErrorResponse: error_response_handler,
     Exception: general_exception_handler,

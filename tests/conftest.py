@@ -1,13 +1,29 @@
-import asyncio
-from enum import Enum
+from collections.abc import AsyncIterator, Callable
+from enum import Enum, StrEnum
 from http import HTTPStatus
+from typing import Any, Final
 
 import pytest
 from fastapi import FastAPI, HTTPException
 from httpx import ASGITransport, AsyncClient
 from pydantic import BaseModel, Field, field_validator
 
-from fastapi_custom_responses import EXCEPTION_HANDLERS, ErrorResponse
+from fastapi_custom_responses import (
+    EXCEPTION_HANDLERS,
+    DefaultErrorCode,
+    ErrorResponse,
+    PaginatedResponse,
+    Response,
+    SuccessResponse,
+    fastapi_responses,
+)
+
+
+class AccessErrorCode(StrEnum):
+    """Error codes for access failures, used to exercise consumer-defined codes."""
+
+    PERMISSION_DENIED = "permission_denied"
+    ACCOUNT_SUSPENDED = "account_suspended"
 
 
 class ValidationPayload(BaseModel):
@@ -52,8 +68,102 @@ class ValueErrorPayload(BaseModel):
         return v
 
 
-def create_test_app() -> FastAPI:
-    """Create a minimal FastAPI app with exception handlers for testing."""
+SECRET_TOKEN: Final[str] = "sk-live-must-never-reach-the-wire"
+
+SAMPLE_PAYLOAD: Final[ValidationPayload] = ValidationPayload(name="Alice", age=30, email="alice@example.com")
+
+VALID_CONSTRAINED_PAYLOAD: Final[dict[str, Any]] = ConstrainedPayload(
+    username="alice", score=50, rating=2.5, color=Color.RED, tags=["a"]
+).model_dump(mode="json")
+
+
+class RaisedErrorCase(BaseModel):
+    """One error a route raises and the envelope it must render."""
+
+    build_exception: Callable[[], Exception]
+    status_code: HTTPStatus
+    expected_body: dict[str, Any]
+
+
+RAISED_ERROR_CASES: Final[dict[str, RaisedErrorCase]] = {
+    "default_status": RaisedErrorCase(
+        build_exception=lambda: ErrorResponse("Custom error message"),
+        status_code=HTTPStatus.BAD_REQUEST,
+        expected_body={"success": False, "error": "Custom error message"},
+    ),
+    "custom_status": RaisedErrorCase(
+        build_exception=lambda: ErrorResponse("Item not found", HTTPStatus.NOT_FOUND),
+        status_code=HTTPStatus.NOT_FOUND,
+        expected_body={"success": False, "error": "Item not found"},
+    ),
+    "with_code": RaisedErrorCase(
+        build_exception=lambda: ErrorResponse(
+            "Custom error message",
+            HTTPStatus.FORBIDDEN,
+            code=AccessErrorCode.PERMISSION_DENIED,
+        ),
+        status_code=HTTPStatus.FORBIDDEN,
+        expected_body={
+            "success": False,
+            "error": "Custom error message",
+            "code": "permission_denied",
+        },
+    ),
+    "from_status_code": RaisedErrorCase(
+        build_exception=lambda: ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN),
+        status_code=HTTPStatus.FORBIDDEN,
+        expected_body={
+            "success": False,
+            "error": "Forbidden",
+        },
+    ),
+    "from_status_code_with_code": RaisedErrorCase(
+        build_exception=lambda: ErrorResponse.from_status_code(
+            HTTPStatus.FORBIDDEN, code=AccessErrorCode.PERMISSION_DENIED
+        ),
+        status_code=HTTPStatus.FORBIDDEN,
+        expected_body={
+            "success": False,
+            "error": "Forbidden",
+            "code": "permission_denied",
+        },
+    ),
+    "http_exception": RaisedErrorCase(
+        build_exception=lambda: HTTPException(
+            status_code=HTTPStatus.UNAUTHORIZED, detail="Not authenticated"
+        ),
+        status_code=HTTPStatus.UNAUTHORIZED,
+        expected_body={"success": False, "error": "Not authenticated"},
+    ),
+    "http_exception_with_a_structured_detail": RaisedErrorCase(
+        build_exception=lambda: HTTPException(status_code=HTTPStatus.CONFLICT, detail={"reason": "taken"}),
+        status_code=HTTPStatus.CONFLICT,
+        expected_body={"success": False, "error": "{'reason': 'taken'}"},
+    ),
+    "value_error": RaisedErrorCase(
+        build_exception=lambda: ValueError("Invalid value provided"),
+        status_code=HTTPStatus.BAD_REQUEST,
+        expected_body={
+            "success": False,
+            "error": "Invalid value provided",
+            "code": "invalid_value",
+        },
+    ),
+    "unhandled_exception": RaisedErrorCase(
+        build_exception=lambda: RuntimeError("Something went wrong"),
+        status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+        expected_body={
+            "success": False,
+            "error": "Internal Server Error",
+            "code": "internal_error",
+        },
+    ),
+}
+
+
+@pytest.fixture
+def app() -> FastAPI:
+    """Minimal FastAPI app with the library's exception handlers registered."""
 
     app = FastAPI(exception_handlers=EXCEPTION_HANDLERS)
 
@@ -69,53 +179,59 @@ def create_test_app() -> FastAPI:
     async def validate_value_error_endpoint(payload: ValueErrorPayload) -> dict:
         return {"success": True, "data": payload.model_dump()}
 
-    @app.get("/error-response")
-    async def error_response_endpoint() -> dict:
-        raise ErrorResponse(error="Custom error message", status_code=HTTPStatus.BAD_REQUEST)
+    @app.get("/response-with-data")
+    async def response_with_data_endpoint() -> Response[ValidationPayload]:
+        return Response(success=True, data=SAMPLE_PAYLOAD)
 
-    @app.get("/error-response-not-found")
-    async def error_response_not_found_endpoint() -> dict:
-        raise ErrorResponse(error="Item not found", status_code=HTTPStatus.NOT_FOUND)
+    @app.get("/success-response")
+    async def success_response_endpoint() -> SuccessResponse:
+        return SuccessResponse(success=True)
 
-    @app.get("/error-response-from-status")
-    async def error_response_from_status_endpoint() -> dict:
-        raise ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN)
+    @app.get("/paginated-response")
+    async def paginated_response_endpoint() -> PaginatedResponse[ValidationPayload]:
+        return PaginatedResponse.build_page([SAMPLE_PAYLOAD], offset=0, limit=10, total=1)
 
-    @app.get("/http-exception")
-    async def http_exception_endpoint() -> dict:
-        raise HTTPException(status_code=HTTPStatus.UNAUTHORIZED, detail="Not authenticated")
+    @app.get("/invalid-model")
+    async def invalid_model_endpoint() -> SuccessResponse:
+        ValidationPayload.model_validate({"token": SECRET_TOKEN})
 
-    @app.get("/value-error")
-    async def value_error_endpoint() -> dict:
-        raise ValueError("Invalid value provided")
+        return SuccessResponse(success=True)
 
-    @app.get("/general-exception")
-    async def general_exception_endpoint() -> dict:
-        raise RuntimeError("Something went wrong")
+    @app.get("/raise/{case_name}")
+    async def raise_error_endpoint(case_name: str) -> None:
+        raise RAISED_ERROR_CASES[case_name].build_exception()
 
     return app
 
 
 @pytest.fixture
-def app() -> FastAPI:
-    """FastAPI app fixture."""
+def documented_app() -> FastAPI:
+    """App whose routes document their responses."""
 
-    return create_test_app()
+    app = FastAPI()
+
+    @app.post(
+        "/reports",
+        responses=fastapi_responses(
+            {
+                HTTPStatus.CREATED: Response[ValidationPayload],
+                HTTPStatus.BAD_REQUEST: AccessErrorCode | DefaultErrorCode,
+                HTTPStatus.FORBIDDEN: AccessErrorCode,
+                HTTPStatus.NOT_FOUND: None,
+            }
+        ),
+    )
+    async def reports() -> SuccessResponse:
+        return SuccessResponse(success=True)
+
+    return app
 
 
-@pytest.fixture(autouse=True)
-async def client(request, app: FastAPI) -> AsyncClient | None:
-    """Async HTTP client fixture that auto-injects into test classes."""
+@pytest.fixture
+async def client(app: FastAPI) -> AsyncIterator[AsyncClient]:
+    """Async HTTP client bound to the test app."""
 
-    # Skip for sync tests
-    if not asyncio.iscoroutinefunction(request.node.obj):
-        yield None
-        return
-
-    transport = ASGITransport(app=app)
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
 
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        if request.instance is not None:
-            request.instance.client = client
-
         yield client
