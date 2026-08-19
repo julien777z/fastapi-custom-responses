@@ -1,6 +1,6 @@
 [project]
 name = "fastapi-custom-responses"
-version = "0.1.4"
+version = "0.2.0"
 description = "Normalized response envelopes and error handling for FastAPI applications."
 authors = [
     { name = "Julien Kmec", email = "me@julien.dev" },
