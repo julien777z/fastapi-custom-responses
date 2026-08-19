@@ -114,7 +114,7 @@ RAISED_ERROR_CASES: Final[dict[str, RaisedErrorCase]] = {
         status_code=HTTPStatus.FORBIDDEN,
         expected_body={
             "success": False,
-            "error": "You don't have permission to perform this action",
+            "error": "Forbidden",
         },
     ),
     "from_status_code_with_code": RaisedErrorCase(
@@ -124,14 +124,9 @@ RAISED_ERROR_CASES: Final[dict[str, RaisedErrorCase]] = {
         status_code=HTTPStatus.FORBIDDEN,
         expected_body={
             "success": False,
-            "error": "You don't have permission to perform this action",
+            "error": "Forbidden",
             "code": "permission_denied",
         },
-    ),
-    "from_status_code_without_a_default_message": RaisedErrorCase(
-        build_exception=lambda: ErrorResponse.from_status_code(HTTPStatus.CONFLICT),
-        status_code=HTTPStatus.CONFLICT,
-        expected_body={"success": False, "error": "Conflict"},
     ),
     "http_exception": RaisedErrorCase(
         build_exception=lambda: HTTPException(
@@ -159,7 +154,7 @@ RAISED_ERROR_CASES: Final[dict[str, RaisedErrorCase]] = {
         status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
         expected_body={
             "success": False,
-            "error": "An unexpected error occurred",
+            "error": "Internal Server Error",
             "code": "internal_error",
         },
     ),

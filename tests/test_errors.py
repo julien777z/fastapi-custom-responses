@@ -187,7 +187,7 @@ class TestErrorEnvelope:
         assert response.status_code == HTTPStatus.INTERNAL_SERVER_ERROR
         assert response.json() == {
             "success": False,
-            "error": "An unexpected error occurred",
+            "error": HTTPStatus.INTERNAL_SERVER_ERROR.phrase,
             "code": "internal_error",
         }
         assert SECRET_TOKEN not in response.text
@@ -252,7 +252,7 @@ class TestFormatValidationErrors:
     def test_falls_back_when_there_are_no_errors(self) -> None:
         """Test that an empty validation error list renders the generic bad request message."""
 
-        assert format_validation_errors(RequestValidationError([])) == "Invalid request"
+        assert format_validation_errors(RequestValidationError([])) == HTTPStatus.BAD_REQUEST.phrase
 
 
 class TestFastapiResponses:
@@ -263,20 +263,14 @@ class TestFastapiResponses:
 
         responses = fastapi_responses({HTTPStatus.FORBIDDEN: AccessErrorCode})
 
-        assert responses[HTTPStatus.FORBIDDEN] == {
-            "model": ErrorResponseModel[AccessErrorCode],
-            "description": "You don't have permission to perform this action",
-        }
+        assert responses[HTTPStatus.FORBIDDEN] == {"model": ErrorResponseModel[AccessErrorCode]}
 
     def test_none_documents_the_bare_envelope(self) -> None:
         """Test that None documents the error envelope without specific codes."""
 
         responses = fastapi_responses({HTTPStatus.NOT_FOUND: None})
 
-        assert responses[HTTPStatus.NOT_FOUND] == {
-            "model": ErrorResponseModel,
-            "description": "Resource not found",
-        }
+        assert responses[HTTPStatus.NOT_FOUND] == {"model": ErrorResponseModel}
 
     def test_a_union_of_enums_parametrizes_the_envelope(self) -> None:
         """Test that a union of error code enums documents every code the status can carry."""
@@ -284,26 +278,15 @@ class TestFastapiResponses:
         responses = fastapi_responses({HTTPStatus.BAD_REQUEST: AccessErrorCode | DefaultErrorCode})
 
         assert responses[HTTPStatus.BAD_REQUEST] == {
-            "model": ErrorResponseModel[AccessErrorCode | DefaultErrorCode],
-            "description": "Invalid request",
+            "model": ErrorResponseModel[AccessErrorCode | DefaultErrorCode]
         }
 
     def test_success_model_is_passed_through(self) -> None:
-        """Test that a success envelope is documented as given, leaving its description to FastAPI."""
+        """Test that a success envelope is documented as given."""
 
         responses = fastapi_responses({HTTPStatus.ACCEPTED: SuccessResponse})
 
         assert responses[HTTPStatus.ACCEPTED] == {"model": SuccessResponse}
-
-    def test_status_without_a_message_falls_back_to_its_phrase(self) -> None:
-        """Test that a status the library has no message for is described by its status phrase."""
-
-        responses = fastapi_responses({HTTPStatus.IM_A_TEAPOT: None})
-
-        assert responses[HTTPStatus.IM_A_TEAPOT] == {
-            "model": ErrorResponseModel,
-            "description": HTTPStatus.IM_A_TEAPOT.phrase,
-        }
 
 
 class TestOpenApiSchema:
@@ -336,6 +319,7 @@ class TestOpenApiSchema:
             {"type": "null"},
         ]
         assert schemas["DefaultErrorCode"]["enum"] == ["validation_error", "invalid_value", "internal_error"]
+        assert forbidden["description"] == HTTPStatus.FORBIDDEN.phrase
 
 
 class TestFormatFieldLocation:

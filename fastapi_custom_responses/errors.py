@@ -12,14 +12,6 @@ from pydantic import BaseModel, ValidationError
 
 logger = logging.getLogger(__name__)
 
-ERROR_MESSAGES: Final[dict[HTTPStatus, str]] = {
-    HTTPStatus.UNAUTHORIZED: "Authentication required",
-    HTTPStatus.FORBIDDEN: "You don't have permission to perform this action",
-    HTTPStatus.NOT_FOUND: "Resource not found",
-    HTTPStatus.BAD_REQUEST: "Invalid request",
-    HTTPStatus.INTERNAL_SERVER_ERROR: "An unexpected error occurred",
-}
-
 SIMPLE_TYPE_MESSAGES: Final[dict[str, str]] = {
     "missing": "is required",
     "string_type": "must be a string",
@@ -52,12 +44,6 @@ class ErrorResponseModel[CodeT: str](BaseModel):
     code: CodeT | None = None
 
 
-def status_message(status_code: HTTPStatus) -> str:
-    """Return the library's message for a status code, or the standard HTTP phrase."""
-
-    return ERROR_MESSAGES.get(status_code) or status_code.phrase
-
-
 class ErrorResponse(Exception):
     """Exception carrying the message, status code, and code to render as an error response."""
 
@@ -78,9 +64,9 @@ class ErrorResponse(Exception):
 
     @classmethod
     def from_status_code(cls, status_code: HTTPStatus, *, code: StrEnum | None = None) -> Self:
-        """Create an error response carrying the default message for a status code."""
+        """Create an error response carrying the standard phrase for a status code."""
 
-        return cls(error=status_message(status_code), status_code=status_code, code=code)
+        return cls(error=status_code.phrase, status_code=status_code, code=code)
 
 
 def format_field_location(loc: tuple[int | str, ...]) -> str:
@@ -192,7 +178,7 @@ def format_validation_errors(exc: RequestValidationError) -> str:
     errors = exc.errors()
 
     if not errors:
-        return ERROR_MESSAGES[HTTPStatus.BAD_REQUEST]
+        return HTTPStatus.BAD_REQUEST.phrase
 
     return ". ".join(format_single_error(error) for error in errors)
 
@@ -239,7 +225,7 @@ def general_exception_handler(_: Request, exc: Exception) -> JSONResponse:
 
     return error_json_response(
         HTTPStatus.INTERNAL_SERVER_ERROR,
-        ERROR_MESSAGES[HTTPStatus.INTERNAL_SERVER_ERROR],
+        HTTPStatus.INTERNAL_SERVER_ERROR.phrase,
         DefaultErrorCode.INTERNAL_ERROR,
     )
 
@@ -252,21 +238,19 @@ def http_exception_handler(_: Request, exc: HTTPException) -> JSONResponse:
     return error_json_response(exc.status_code, error_message, None)
 
 
-def response_entry(status_code: HTTPStatus, spec: ResponseSpec | None) -> dict[str, Any]:
-    """Build one FastAPI response entry from a status code and its model or error codes."""
+def documented_model(spec: ResponseSpec | None) -> type[BaseModel]:
+    """Return the model documenting one response: the given model, or the error envelope."""
 
     if isinstance(spec, type) and issubclass(spec, BaseModel):
-        return {"model": spec}
+        return spec
 
-    model = ErrorResponseModel if spec is None else ErrorResponseModel[spec]
-
-    return {"model": model, "description": status_message(status_code)}
+    return ErrorResponseModel if spec is None else ErrorResponseModel[spec]
 
 
 def fastapi_responses(specs: dict[HTTPStatus, ResponseSpec | None]) -> dict[int | str, dict[str, Any]]:
     """Build FastAPI's `responses` mapping from status codes and their models or error codes."""
 
-    return {status_code: response_entry(status_code, spec) for status_code, spec in specs.items()}
+    return {status_code: {"model": documented_model(spec)} for status_code, spec in specs.items()}
 
 
 EXCEPTION_HANDLERS: dict[type[Exception], Callable[[Request, Exception], JSONResponse]] = {

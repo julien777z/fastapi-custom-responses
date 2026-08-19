@@ -10,7 +10,7 @@ Provides normalized response objects and error handling for FastAPI applications
 - `fastapi_responses` to build FastAPI's `responses` mapping, documenting your codes in OpenAPI.
 - Generic `Response[T]`, `SuccessResponse`, and `PaginatedResponse[T]` envelopes for success payloads.
 - `ErrorResponseModel` for documenting error responses in OpenAPI.
-- Default messages for common status codes via `ErrorResponse.from_status_code`.
+- `ErrorResponse.from_status_code` for an error carrying a status's standard HTTP phrase.
 
 ## Installation
 
@@ -39,15 +39,15 @@ app = FastAPI(
 class Data(BaseModel):
     example: str
 
-class AccessErrorCode(StrEnum):
-    PERMISSION_DENIED = "permission_denied"
-    ACCOUNT_SUSPENDED = "account_suspended"
+class OrderErrorCode(StrEnum):
+    ORDER_LOCKED = "order_locked"
+    PAYMENT_DECLINED = "payment_declined"
 
 @router.get(
     "/",
     response_model=Response[Data],
     responses=fastapi_responses({
-        HTTPStatus.FORBIDDEN: AccessErrorCode,
+        HTTPStatus.FORBIDDEN: OrderErrorCode,
         HTTPStatus.INTERNAL_SERVER_ERROR: None,
     }),
 )
@@ -61,15 +61,15 @@ async def index() -> Response[Data]:
 
 @router.get(
     "/return-error",
-    responses=fastapi_responses({HTTPStatus.FORBIDDEN: AccessErrorCode}),
+    responses=fastapi_responses({HTTPStatus.FORBIDDEN: OrderErrorCode}),
 )
 async def error_route() -> Response[Data]:
     """Error route."""
 
     raise ErrorResponse(
-        error="Your account is suspended.",
+        error="This order is locked.",
         status_code=HTTPStatus.FORBIDDEN,
-        code=AccessErrorCode.ACCOUNT_SUSPENDED,
+        code=OrderErrorCode.ORDER_LOCKED,
     )
 ```
 
@@ -119,7 +119,7 @@ Every error then normalizes into one JSON shape:
 | `HTTPException` | From exception | None | Uses the exception `detail` as the error message |
 | `ValueError` | `400` | `invalid_value` | Uses `str(exc)` as the error message |
 | `ValidationError` (Pydantic) | `500` | `internal_error` | A model failed to validate inside your app; logged and reported generically so its details stay out of the body |
-| `Exception` (catch-all) | `500` | `internal_error` | Returns a generic `"An unexpected error occurred"` message |
+| `Exception` (catch-all) | `500` | `internal_error` | Reports the status phrase so the exception stays out of the body |
 
 `code` is present when a condition was named — by you, or by one of the library's own handlers. It is absent otherwise, rather than restating the status.
 
@@ -134,24 +134,14 @@ from fastapi_custom_responses import ErrorResponse
 raise ErrorResponse(error="Resource not found", status_code=HTTPStatus.NOT_FOUND)
 ```
 
-For the statuses that have a default message, create one from the status alone:
+Or create one from the status alone, which carries that status's standard HTTP phrase:
 
 ```py
 raise ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN)
-# { "success": false, "error": "You don't have permission to perform this action" }
+# { "success": false, "error": "Forbidden" }
 ```
 
-Default messages for common status codes:
-
-| Status Code | Default Message |
-|-------------|-----------------|
-| `401` | `"Authentication required"` |
-| `403` | `"You don't have permission to perform this action"` |
-| `404` | `"Resource not found"` |
-| `400` | `"Invalid request"` |
-| `500` | `"An unexpected error occurred"` |
-
-Any other status falls back to its standard HTTP phrase, so pass `error` yourself when you want better wording:
+The library ships no wording of its own, so pass `error` whenever the phrase is too terse for the reader:
 
 ```py
 raise ErrorResponse(error="That name is already taken", status_code=HTTPStatus.CONFLICT)
@@ -225,9 +215,9 @@ Any unrecognized error types fall back to the Pydantic error message prefixed wi
 ```py
 from enum import StrEnum
 
-class AccessErrorCode(StrEnum):
-    PERMISSION_DENIED = "permission_denied"
-    ACCOUNT_SUSPENDED = "account_suspended"
+class OrderErrorCode(StrEnum):
+    ORDER_LOCKED = "order_locked"
+    PAYMENT_DECLINED = "payment_declined"
 ```
 
 The library's own handlers name their conditions too; import `DefaultErrorCode` to branch on `validation_error`, `invalid_value`, and `internal_error`.
@@ -236,18 +226,18 @@ Pass a member when raising; both `ErrorResponse` and `from_status_code` accept i
 
 ```py
 raise ErrorResponse(
-    error="Your account is suspended",
+    error="This order is locked",
     status_code=HTTPStatus.FORBIDDEN,
-    code=AccessErrorCode.ACCOUNT_SUSPENDED,
+    code=OrderErrorCode.ORDER_LOCKED,
 )
-# { "success": false, "error": "Your account is suspended", "code": "account_suspended" }
+# { "success": false, "error": "This order is locked", "code": "order_locked" }
 
-raise ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN, code=AccessErrorCode.PERMISSION_DENIED)
+raise ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN, code=OrderErrorCode.ORDER_LOCKED)
 ```
 
 ## Documenting Responses
 
-`fastapi_responses` builds FastAPI's `responses` mapping. Give it an error code enum, a union of enums, `None` for the bare error envelope, or a success envelope — `Report` and `AccessErrorCode` below are your own, everything else is imported:
+`fastapi_responses` builds FastAPI's `responses` mapping. Give it an error code enum, a union of enums, `None` for the bare error envelope, or a success envelope:
 
 ```py
 from fastapi_custom_responses import DefaultErrorCode, Response, SuccessResponse, fastapi_responses
@@ -258,7 +248,7 @@ from fastapi_custom_responses import DefaultErrorCode, Response, SuccessResponse
         HTTPStatus.CREATED: Response[Report],
         HTTPStatus.ACCEPTED: SuccessResponse,
         HTTPStatus.BAD_REQUEST: DefaultErrorCode,
-        HTTPStatus.FORBIDDEN: AccessErrorCode,
+        HTTPStatus.FORBIDDEN: OrderErrorCode,
         HTTPStatus.NOT_FOUND: None,
     }),
 )
@@ -267,15 +257,15 @@ from fastapi_custom_responses import DefaultErrorCode, Response, SuccessResponse
 Each error code enum becomes its own named schema in the OpenAPI document, so generated clients get a real union type per domain rather than a bare string:
 
 ```json
-"AccessErrorCode": { "type": "string", "enum": ["permission_denied", "account_suspended"], "title": "AccessErrorCode" }
+"OrderErrorCode": { "type": "string", "enum": ["order_locked", "payment_declined"], "title": "OrderErrorCode" }
 ```
 
-`400` and `500` are answered by the library's own handlers, so document `DefaultErrorCode` there. Where a status carries your codes as well as theirs, union the two — `AccessErrorCode | DefaultErrorCode` — so the schema lists every value that status can emit.
+`400` and `500` are answered by the library's own handlers, so document `DefaultErrorCode` there. Where a status carries your codes as well as theirs, union the two — `OrderErrorCode | DefaultErrorCode` — so the schema lists every value that status can emit.
 
-The statuses with default messages are described with the library's own message; the rest keep FastAPI's status phrase. Entries needing `headers`, custom media types, or `links` are written directly and merge with the result:
+FastAPI describes each entry with its status phrase. Entries needing `headers`, custom media types, or `links` are written directly and merge with the result:
 
 ```py
-responses={**fastapi_responses({HTTPStatus.FORBIDDEN: AccessErrorCode}), HTTPStatus.NOT_MODIFIED: {"headers": {...}}}
+responses={**fastapi_responses({HTTPStatus.FORBIDDEN: OrderErrorCode}), HTTPStatus.NOT_MODIFIED: {"headers": {...}}}
 ```
 
 ## Local Development
