@@ -233,6 +233,9 @@ except third_party_client.ApiException as exc:
 
 - Describe available capabilities without assuming how consumers will use the project or framing guidance as prohibitions such as "never do X."
 - Remove repeated explanations and prefer short sections, bullets, tables, and focused examples over long prose.
+- Nest a section under a parent only while the parent's subject still contains it. A section describing a capability that has grown past its original parent belongs at the top level, filed where a reader would look for it rather than where it was first written. When a helper that once served one concern begins serving a second, its section has usually outgrown the heading it sits under.
+- Keep a note about choosing between features in the section that describes those features, not inside an example. An example teaches one path; a reader comparing options is not reading it yet, and a caveat parked there is missed by everyone who skips the code.
+- Introduce a capability with the call that enables it before showing what it produces, so the section can be followed from top to bottom without hunting elsewhere for the setup step.
 
 ### GitHub Actions And Libraries
 
