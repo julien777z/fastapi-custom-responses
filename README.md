@@ -247,7 +247,7 @@ raise ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN, code=AccessErrorCode.
 
 ## Documenting Responses
 
-`fastapi_responses` builds FastAPI's `responses` mapping. Give it an error code enum, a union of enums, `None` for the bare error envelope, or a success envelope:
+`fastapi_responses` builds FastAPI's `responses` mapping. Give it an error code enum, a union of enums, `None` for the bare error envelope, or a success envelope — `Report` and `AccessErrorCode` below are your own, everything else is imported:
 
 ```py
 from fastapi_custom_responses import DefaultErrorCode, Response, SuccessResponse, fastapi_responses
