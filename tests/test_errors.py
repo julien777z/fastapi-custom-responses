@@ -177,6 +177,24 @@ class TestErrorEnvelope:
         assert response.status_code == case.status_code
         assert response.json() == case.expected_body
 
+    @pytest.mark.parametrize(
+        ("method", "path", "status_code", "error"),
+        [
+            ("GET", "/no-such-route", HTTPStatus.NOT_FOUND, "Not Found"),
+            ("POST", "/success-response", HTTPStatus.METHOD_NOT_ALLOWED, "Method Not Allowed"),
+        ],
+        ids=["unknown_route", "wrong_method"],
+    )
+    async def test_a_routing_failure_renders_the_envelope(
+        self, client: AsyncClient, method: str, path: str, status_code: HTTPStatus, error: str
+    ) -> None:
+        """Test that the errors the router raises itself render the envelope like any other."""
+
+        response = await client.request(method, path)
+
+        assert response.status_code == status_code
+        assert response.json() == {"success": False, "error": error}
+
     async def test_a_model_that_fails_to_validate_reports_generically(self, client: AsyncClient) -> None:
         """Test that a model failing to validate inside the app never echoes what it was given."""
 

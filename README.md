@@ -20,7 +20,13 @@ pip install fastapi-custom-responses
 
 ```py
 from http import HTTPStatus
-from fastapi_custom_responses import EXCEPTION_HANDLERS, ErrorResponse, Response, fastapi_responses
+from fastapi_custom_responses import (
+    EXCEPTION_HANDLERS,
+    DefaultErrorCode,
+    ErrorResponse,
+    Response,
+    fastapi_responses,
+)
 from fastapi import APIRouter, FastAPI
 from enum import StrEnum
 from pydantic import BaseModel
@@ -46,7 +52,7 @@ class OrderErrorCode(StrEnum):
     response_model=Response[Data],
     responses=fastapi_responses({
         HTTPStatus.FORBIDDEN: OrderErrorCode,
-        HTTPStatus.INTERNAL_SERVER_ERROR: None,
+        HTTPStatus.INTERNAL_SERVER_ERROR: DefaultErrorCode,
     }),
 )
 async def index() -> Response[Data]:
@@ -114,7 +120,7 @@ Every error then normalizes into one JSON shape:
 |-----------|-------------|------|----------|
 | `ErrorResponse` | Custom (default `400`) | Yours, if you pass one | Uses the provided `error` message directly |
 | `RequestValidationError` | `400` | `validation_error` | Pydantic validation errors are converted to human-readable messages (see below) |
-| `HTTPException` | From exception | None | Uses the exception `detail` as the error message |
+| `HTTPException` | From exception | None | Uses the exception `detail`; also covers the `404` and `405` the router raises itself |
 | `ValueError` | `400` | `invalid_value` | Uses `str(exc)` as the error message |
 | `ValidationError` (Pydantic) | `500` | `internal_error` | A model failed to validate inside your app; logged and reported generically so its details stay out of the body |
 | `Exception` (catch-all) | `500` | `internal_error` | Reports the status phrase so the exception stays out of the body |

@@ -5,8 +5,8 @@ from http import HTTPStatus
 from types import UnionType
 from typing import Any, Final, Literal, Self
 
-from fastapi import HTTPException, Request
-from fastapi.exceptions import RequestValidationError
+from fastapi import Request
+from fastapi.exceptions import RequestValidationError, StarletteHTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ValidationError
 
@@ -228,8 +228,8 @@ def general_exception_handler(_: Request, exc: Exception) -> JSONResponse:
     return error_json_response(status_code, status_code.phrase, DefaultErrorCode.INTERNAL_ERROR)
 
 
-def http_exception_handler(_: Request, exc: HTTPException) -> JSONResponse:
-    """Convert HTTPException to our standard error format."""
+def http_exception_handler(_: Request, exc: StarletteHTTPException) -> JSONResponse:
+    """Convert an HTTP exception, including one the router raises, to the error envelope."""
 
     error_message = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
 
@@ -252,7 +252,7 @@ def fastapi_responses(specs: dict[HTTPStatus, ResponseSpec]) -> dict[int | str, 
 
 
 EXCEPTION_HANDLERS: dict[type[Exception], Callable[[Request, Exception], JSONResponse]] = {
-    HTTPException: http_exception_handler,
+    StarletteHTTPException: http_exception_handler,
     RequestValidationError: validation_exception_handler,
     ValidationError: general_exception_handler,
     ValueError: value_error_handler,
