@@ -25,7 +25,7 @@ SIMPLE_TYPE_MESSAGES: Final[dict[str, str]] = {
     "uuid_parsing": "must be a valid UUID",
 }
 
-type ResponseSpec = type[StrEnum] | type[BaseModel] | UnionType
+type ResponseSpec = type[StrEnum] | type[BaseModel] | UnionType | None
 
 
 class DefaultErrorCode(StrEnum):
@@ -223,11 +223,9 @@ def general_exception_handler(_: Request, exc: Exception) -> JSONResponse:
 
     logger.exception(exc)
 
-    return error_json_response(
-        HTTPStatus.INTERNAL_SERVER_ERROR,
-        HTTPStatus.INTERNAL_SERVER_ERROR.phrase,
-        DefaultErrorCode.INTERNAL_ERROR,
-    )
+    status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+
+    return error_json_response(status_code, status_code.phrase, DefaultErrorCode.INTERNAL_ERROR)
 
 
 def http_exception_handler(_: Request, exc: HTTPException) -> JSONResponse:
@@ -238,7 +236,7 @@ def http_exception_handler(_: Request, exc: HTTPException) -> JSONResponse:
     return error_json_response(exc.status_code, error_message, None)
 
 
-def documented_model(spec: ResponseSpec | None) -> type[BaseModel]:
+def documented_model(spec: ResponseSpec) -> type[BaseModel]:
     """Return the model documenting one response: the given model, or the error envelope."""
 
     if isinstance(spec, type) and issubclass(spec, BaseModel):
@@ -247,7 +245,7 @@ def documented_model(spec: ResponseSpec | None) -> type[BaseModel]:
     return ErrorResponseModel if spec is None else ErrorResponseModel[spec]
 
 
-def fastapi_responses(specs: dict[HTTPStatus, ResponseSpec | None]) -> dict[int | str, dict[str, Any]]:
+def fastapi_responses(specs: dict[HTTPStatus, ResponseSpec]) -> dict[int | str, dict[str, Any]]:
     """Build FastAPI's `responses` mapping from status codes and their models or error codes."""
 
     return {status_code: {"model": documented_model(spec)} for status_code, spec in specs.items()}
