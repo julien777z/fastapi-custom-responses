@@ -213,7 +213,7 @@ def value_error_handler(_: Request, exc: ValueError) -> JSONResponse:
 
 
 def error_response_handler(_: Request, exc: ErrorResponse) -> JSONResponse:
-    """Convert ErrorResponse exceptions to proper JSONResponse objects."""
+    """Render an error the application raised deliberately, carrying the code it named."""
 
     logger.info("ErrorResponse: %s - %s", exc.status_code, exc.error)
 
@@ -233,9 +233,7 @@ def general_exception_handler(_: Request, exc: Exception) -> JSONResponse:
 def http_exception_handler(_: Request, exc: StarletteHTTPException) -> JSONResponse:
     """Convert an HTTP exception, including one the router raises, to the error envelope."""
 
-    error_message = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
-
-    return error_json_response(exc.status_code, error_message, None, headers=exc.headers)
+    return error_json_response(exc.status_code, str(exc.detail), None, headers=exc.headers)
 
 
 def documented_model(spec: ResponseSpec) -> type[BaseModel]:
