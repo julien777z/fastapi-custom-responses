@@ -18,7 +18,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "black>=26.5.1,<27.0.0",
-    "isort>=8.0.1,<9.0.0",
+    "isort>=9.0.1",
     "pylint>=4.0.6,<5.0.0",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
