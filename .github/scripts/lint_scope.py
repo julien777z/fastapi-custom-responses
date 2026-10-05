@@ -34,6 +34,7 @@ def main() -> None:
     event_name = os.environ["GITHUB_EVENT_NAME"]
     head = os.environ["GITHUB_SHA"]
     base = ""
+
     if event_name == "pull_request":
         head = event["pull_request"]["head"]["sha"]
         if event["action"] == "synchronize":
@@ -42,8 +43,10 @@ def main() -> None:
             base = git("merge-base", event["pull_request"]["base"]["sha"], head).strip()
     elif event_name == "push":
         base = event["before"]
+
     if base and set(base) == {"0"}:
         base = git("hash-object", "-t", "tree", os.devnull).strip()
+
     if (
         base
         and subprocess.run(
@@ -51,11 +54,15 @@ def main() -> None:
         ).returncode
     ):
         subprocess.run(["git", "fetch", "--no-tags", "origin", base], cwd=ROOT, check=True)
+
     changed = git("diff", "--name-only", "--no-renames", "-z", base, head).split("\0") if base else []
+
     run = event_name == "workflow_dispatch" or any(is_application_source(path) for path in changed)
     revision = base if event_name == "pull_request" else ""
+
     with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
         output.write(f"run={str(run).lower()}\nbase={revision}\n")
+
     print(
         f"Lint scope: {event_name}; application source changed: {run}; revision: {revision or 'whole branch'}"
     )
