@@ -1,0 +1,50 @@
+name: Lint
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: lint-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Select Lint Scope
+        id: scope
+        run: python3 .github/scripts/lint_scope.py
+
+      - name: Set up Python
+        if: steps.scope.outputs.run == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: ".python-version"
+
+      - name: Setup Poetry
+        if: steps.scope.outputs.run == 'true'
+        uses: ./.github/actions/setup-poetry
+
+      - name: Install dependencies
+        if: steps.scope.outputs.run == 'true'
+        run: poetry install -E dev
+
+      - name: Lint
+        if: steps.scope.outputs.run == 'true'
+        env:
+          LINT_BASE_REVISION: ${{ steps.scope.outputs.base }}
+        run: python3 .github/scripts/lint.py

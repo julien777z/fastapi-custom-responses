@@ -14,30 +14,6 @@ on:
       - ".cursor/**"
 
 jobs:
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version-file: ".python-version"
-
-      - name: Setup Poetry
-        uses: ./.github/actions/setup-poetry
-
-      - name: Install dependencies
-        run: poetry install -E dev
-
-      - name: Lint
-        run: |
-          poetry run black --check .
-          poetry run isort --check-only .
-          poetry run pylint fastapi_custom_responses/ .github/scripts/
-
   test:
     name: Test on Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
