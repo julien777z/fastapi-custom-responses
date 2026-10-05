@@ -241,7 +241,7 @@ raise ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN, code=OrderErrorCode.O
 
 ## Documenting Responses
 
-`fastapi_responses` builds FastAPI's `responses` mapping. Give it an error code enum, a union of enums, `None` for the bare error envelope, or a success envelope:
+`fastapi_responses` builds FastAPI's `responses` mapping. Give it an error code enum, a union of enums, selected enum members, `None` for the bare error envelope, or a success envelope:
 
 ```py
 from fastapi_custom_responses import DefaultErrorCode, Response, SuccessResponse, fastapi_responses
@@ -271,6 +271,22 @@ FastAPI describes each entry with its status phrase. Entries needing `headers`, 
 ```py
 responses={**fastapi_responses({HTTPStatus.FORBIDDEN: OrderErrorCode}), HTTPStatus.NOT_MODIFIED: {"headers": {...}}}
 ```
+
+### Selected Error Codes
+
+Document only the enum members a status can carry, including members of different enums:
+
+```python
+from http import HTTPStatus
+
+from fastapi_custom_responses import SelectedErrorCodes, fastapi_responses
+
+responses = fastapi_responses({
+    HTTPStatus.FORBIDDEN: SelectedErrorCodes(codes=(OrderErrorCode.ORDER_LOCKED,)),
+})
+```
+
+The error envelope validates the selected values and keeps its optional `code` field nullable.
 
 ## Local Development
 

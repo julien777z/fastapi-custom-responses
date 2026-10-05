@@ -14,6 +14,7 @@ from fastapi_custom_responses import (
     ErrorResponse,
     PaginatedResponse,
     Response,
+    SelectedErrorCodes,
     SuccessResponse,
     fastapi_responses,
 )
@@ -222,6 +223,20 @@ def documented_app() -> FastAPI:
         ),
     )
     async def reports() -> SuccessResponse:
+        return SuccessResponse(success=True)
+
+    @app.post(
+        "/selected",
+        responses=fastapi_responses(
+            {
+                HTTPStatus.FORBIDDEN: SelectedErrorCodes(
+                    codes=(AccessErrorCode.PERMISSION_DENIED, DefaultErrorCode.INVALID_VALUE)
+                ),
+                HTTPStatus.CONFLICT: SelectedErrorCodes(codes=(AccessErrorCode.ACCOUNT_SUSPENDED,)),
+            }
+        ),
+    )
+    async def selected() -> SuccessResponse:
         return SuccessResponse(success=True)
 
     return app

@@ -2,15 +2,23 @@ import logging
 from collections.abc import Callable, Mapping
 from enum import StrEnum
 from http import HTTPStatus
-from types import UnionType
-from typing import Any, Final, Literal, Self
+from typing import Annotated, Any, Final, Self
 
 from fastapi import Request
-from fastapi.exceptions import RequestValidationError, StarletteHTTPException
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ValidationError
+from starlette.exceptions import HTTPException
 
-logger = logging.getLogger(__name__)
+from fastapi_custom_responses.models.errors import (
+    ConstraintRule,
+    DefaultErrorCode,
+    ErrorResponseModel,
+    ResponseSpec,
+    SelectedErrorCodes,
+)
+
+logger: logging.Logger = logging.getLogger(__name__)
 
 SIMPLE_TYPE_MESSAGES: Final[dict[str, str]] = {
     "missing": "is required",
@@ -24,24 +32,6 @@ SIMPLE_TYPE_MESSAGES: Final[dict[str, str]] = {
     "uuid_type": "must be a valid UUID",
     "uuid_parsing": "must be a valid UUID",
 }
-
-type ResponseSpec = type[StrEnum] | type[BaseModel] | UnionType | None
-
-
-class DefaultErrorCode(StrEnum):
-    """Codes for the conditions the library's own handlers detect."""
-
-    VALIDATION_ERROR = "validation_error"
-    INVALID_VALUE = "invalid_value"
-    INTERNAL_ERROR = "internal_error"
-
-
-class ErrorResponseModel[CodeT: str](BaseModel):
-    """Body every error response carries, and the schema documenting it in OpenAPI."""
-
-    success: Literal[False]
-    error: str
-    code: CodeT | None = None
 
 
 class ErrorResponse(Exception):
@@ -87,14 +77,6 @@ def format_constraint_value(value: int | float | str) -> str:
         return str(int(value))
 
     return str(value)
-
-
-class ConstraintRule(BaseModel):
-    """Maps a Pydantic constraint error type to its `ctx` key, message template, and fallback."""
-
-    ctx_key: str
-    template: str
-    fallback: str
 
 
 CONSTRAINT_RULES: Final[dict[str, ConstraintRule]] = {
@@ -194,8 +176,10 @@ def error_json_response(
     return JSONResponse(status_code=status_code, content=content, headers=headers)
 
 
-def validation_exception_handler(_: Request, exc: RequestValidationError) -> JSONResponse:
+def validation_exception_handler(_: Request, exc: Exception) -> JSONResponse:
     """Handle validation errors from pydantic models with human-readable messages."""
+
+    assert isinstance(exc, RequestValidationError)
 
     logger.warning("Validation error: %s", exc.errors())
 
@@ -204,16 +188,20 @@ def validation_exception_handler(_: Request, exc: RequestValidationError) -> JSO
     )
 
 
-def value_error_handler(_: Request, exc: ValueError) -> JSONResponse:
+def value_error_handler(_: Request, exc: Exception) -> JSONResponse:
     """Handle a value the application rejected, reporting it as a bad request."""
+
+    assert isinstance(exc, ValueError)
 
     logger.exception(exc)
 
     return error_json_response(HTTPStatus.BAD_REQUEST, str(exc), DefaultErrorCode.INVALID_VALUE)
 
 
-def error_response_handler(_: Request, exc: ErrorResponse) -> JSONResponse:
+def error_response_handler(_: Request, exc: Exception) -> JSONResponse:
     """Render an error the application raised deliberately, carrying the code it named."""
+
+    assert isinstance(exc, ErrorResponse)
 
     logger.info("ErrorResponse: %s - %s", exc.status_code, exc.error)
 
@@ -230,8 +218,10 @@ def general_exception_handler(_: Request, exc: Exception) -> JSONResponse:
     return error_json_response(status_code, status_code.phrase, DefaultErrorCode.INTERNAL_ERROR)
 
 
-def http_exception_handler(_: Request, exc: StarletteHTTPException) -> JSONResponse:
+def http_exception_handler(_: Request, exc: Exception) -> JSONResponse:
     """Convert an HTTP exception, including one the router raises, to the error envelope."""
+
+    assert isinstance(exc, HTTPException)
 
     return error_json_response(exc.status_code, str(exc.detail), None, headers=exc.headers)
 
@@ -241,6 +231,9 @@ def documented_model(spec: ResponseSpec) -> type[BaseModel]:
 
     if isinstance(spec, type) and issubclass(spec, BaseModel):
         return spec
+
+    if isinstance(spec, SelectedErrorCodes):
+        return ErrorResponseModel[Annotated[str, spec.code_metadata]]
 
     return ErrorResponseModel if spec is None else ErrorResponseModel[spec]
 
@@ -252,7 +245,7 @@ def fastapi_responses(specs: dict[HTTPStatus, ResponseSpec]) -> dict[int | str, 
 
 
 EXCEPTION_HANDLERS: dict[type[Exception], Callable[[Request, Exception], JSONResponse]] = {
-    StarletteHTTPException: http_exception_handler,
+    HTTPException: http_exception_handler,
     RequestValidationError: validation_exception_handler,
     ValidationError: general_exception_handler,
     ValueError: value_error_handler,
