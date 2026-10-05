@@ -20,14 +20,9 @@ def is_application_source(path: str) -> bool:
     parts = Path(path).parts
     return (
         (path.startswith(SOURCE_ROOTS) or path in SOURCE_FILES)
-        and not any(
-            part in {"tests", "test", "__tests__", "docs", "audits"} for part in parts
-        )
+        and not any(part in {"tests", "test", "__tests__", "docs", "audits"} for part in parts)
         and not path.endswith((".md", ".rst"))
-        and not any(
-            part.endswith((".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx"))
-            for part in parts
-        )
+        and not any(part.endswith((".test.ts", ".test.tsx", ".spec.ts", ".spec.tsx")) for part in parts)
     )
 
 
@@ -48,18 +43,15 @@ def main() -> None:
         base = event["before"]
     if base and set(base) == {"0"}:
         base = git("hash-object", "-t", "tree", os.devnull).strip()
-    if base and subprocess.run(
-        ["git", "cat-file", "-e", base], cwd=ROOT, check=False, capture_output=True
-    ).returncode:
+    if (
+        base
+        and subprocess.run(
+            ["git", "cat-file", "-e", base], cwd=ROOT, check=False, capture_output=True
+        ).returncode
+    ):
         subprocess.run(["git", "fetch", "--no-tags", "origin", base], cwd=ROOT, check=True)
-    changed = (
-        git("diff", "--name-only", "--no-renames", "-z", base, head).split("\0")
-        if base
-        else []
-    )
-    run = event_name == "workflow_dispatch" or any(
-        is_application_source(path) for path in changed
-    )
+    changed = git("diff", "--name-only", "--no-renames", "-z", base, head).split("\0") if base else []
+    run = event_name == "workflow_dispatch" or any(is_application_source(path) for path in changed)
     revision = base if event_name == "pull_request" else ""
     with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
         output.write(f"run={str(run).lower()}\nbase={revision}\n")
