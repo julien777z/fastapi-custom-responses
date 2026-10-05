@@ -19,27 +19,11 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Workflow Tools
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.workflow_sha }}
-          fetch-depth: 0
-
-      - name: Preserve Workflow Tools
-        run: |
-          mkdir -p "$RUNNER_TEMP/lint-scripts"
-          cp -R .github/scripts/. "$RUNNER_TEMP/lint-scripts/"
-
-      - name: Checkout Source Revision
+      - name: Checkout Code
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
-
-      - name: Restore Workflow Tools
-        run: |
-          mkdir -p .github/scripts
-          cp -R "$RUNNER_TEMP/lint-scripts/." .github/scripts/
 
       - name: Select Lint Scope
         id: scope
