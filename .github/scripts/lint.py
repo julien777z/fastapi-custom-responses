@@ -1,8 +1,9 @@
 import os
 import subprocess
 from pathlib import Path
+from typing import Final
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT: Final[Path] = Path(__file__).resolve().parents[2]
 
 
 def main() -> int:

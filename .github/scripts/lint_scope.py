@@ -2,10 +2,11 @@ import json
 import os
 import subprocess
 from pathlib import Path
+from typing import Final
 
-ROOT = Path(__file__).resolve().parents[2]
-SOURCE_ROOTS = ("fastapi_custom_responses/",)
-SOURCE_FILES = ("pyproject.toml", "poetry.lock", "poetry.toml")
+ROOT: Final[Path] = Path(__file__).resolve().parents[2]
+SOURCE_ROOTS: Final[tuple[str, ...]] = ("fastapi_custom_responses/",)
+SOURCE_FILES: Final[tuple[str, ...]] = ("pyproject.toml", "poetry.lock", "poetry.toml")
 
 
 def git(*arguments: str) -> str:
