@@ -28,7 +28,7 @@ class TestResponseEnvelopes:
         ],
         ids=["with_data", "payload_free", "paginated"],
     )
-    async def test_renders_the_success_envelope(
+    async def test_renders(
         self,
         client: AsyncClient,
         path: str,

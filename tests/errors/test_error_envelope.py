@@ -19,7 +19,7 @@ class TestErrorEnvelope:
     """Tests for normalized error responses."""
 
     @pytest.mark.parametrize(("case_name", "case"), RAISED_ERROR_CASES.items(), ids=RAISED_ERROR_CASES)
-    async def test_renders_the_error_envelope(
+    async def test_renders(
         self, client: AsyncClient, case_name: str, case: RaisedErrorCase
     ) -> None:
         """Test that each failing path renders the envelope with its status and code."""

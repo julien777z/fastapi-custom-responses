@@ -61,7 +61,7 @@ RAISED_ERROR_CASES: Final[dict[str, RaisedErrorCase]] = {
     "from_status_code": RaisedErrorCase(
         build_exception=lambda: ErrorResponse.from_status_code(HTTPStatus.FORBIDDEN),
         status_code=HTTPStatus.FORBIDDEN,
-        expected_body=ErrorResponseModel(success=False, error="Forbidden"),
+        expected_body=ErrorResponseModel(success=False, error=HTTPStatus.FORBIDDEN.phrase),
     ),
     "from_status_code_with_code": RaisedErrorCase(
         build_exception=lambda: ErrorResponse.from_status_code(
@@ -69,7 +69,7 @@ RAISED_ERROR_CASES: Final[dict[str, RaisedErrorCase]] = {
         ),
         status_code=HTTPStatus.FORBIDDEN,
         expected_body=ErrorResponseModel(
-            success=False, error="Forbidden", code=AccessErrorCode.PERMISSION_DENIED
+            success=False, error=HTTPStatus.FORBIDDEN.phrase, code=AccessErrorCode.PERMISSION_DENIED
         ),
     ),
     "http_exception": RaisedErrorCase(
@@ -95,7 +95,9 @@ RAISED_ERROR_CASES: Final[dict[str, RaisedErrorCase]] = {
         build_exception=lambda: RuntimeError("Something went wrong"),
         status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
         expected_body=ErrorResponseModel(
-            success=False, error="Internal Server Error", code=DefaultErrorCode.INTERNAL_ERROR
+            success=False,
+            error=HTTPStatus.INTERNAL_SERVER_ERROR.phrase,
+            code=DefaultErrorCode.INTERNAL_ERROR,
         ),
     ),
 }

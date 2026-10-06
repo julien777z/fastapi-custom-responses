@@ -19,6 +19,7 @@ def is_application_source(path: str) -> bool:
     """Classify application inputs without counting documentation or test fixtures."""
 
     parts = Path(path).parts
+
     return (
         (path.startswith(SOURCE_ROOTS) or path in SOURCE_FILES)
         and not any(part in {"tests", "test", "__tests__", "docs", "audits"} for part in parts)
