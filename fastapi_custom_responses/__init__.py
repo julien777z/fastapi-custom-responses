@@ -1,13 +1,12 @@
 from .errors import (
     EXCEPTION_HANDLERS,
-    DefaultErrorCode,
+    EXCEPTION_RESPONSES,
     ErrorResponse,
-    ErrorResponseModel,
-    fastapi_responses,
 )
-from .responses import PaginatedResponse, PaginationMeta, Response, SuccessResponse
+from .models.errors import DefaultErrorCode, ErrorResponseModel
+from .models.responses import PaginatedResponse, PaginationMeta, Response, SuccessResponse
 
-__all__ = [
+__all__: list[str] = [
     "EXCEPTION_HANDLERS",
     "DefaultErrorCode",
     "ErrorResponse",
@@ -16,5 +15,5 @@ __all__ = [
     "PaginationMeta",
     "Response",
     "SuccessResponse",
-    "fastapi_responses",
+    "EXCEPTION_RESPONSES",
 ]

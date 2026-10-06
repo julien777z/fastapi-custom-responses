@@ -31,7 +31,7 @@ class PaginatedResponse[T](Response[list[T]]):
 
     @classmethod
     def build_page(cls, items: list[T], *, offset: int, limit: int, total: int) -> Self:
-        """Build a paginated response from a page of items and the bounds it was read with."""
+        """Paginated response with its page bounds."""
 
         return cls(
             success=True,

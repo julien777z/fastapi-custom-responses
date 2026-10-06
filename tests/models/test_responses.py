@@ -1,68 +1,60 @@
 from http import HTTPStatus
 from inspect import Parameter, signature
-from typing import Any
 
 import pytest
 from httpx import AsyncClient
 from pydantic import ValidationError
 
-from fastapi_custom_responses import PaginatedResponse
-from tests.conftest import SAMPLE_PAYLOAD, ValidationPayload
+from fastapi_custom_responses import PaginatedResponse, Response, SuccessResponse
+from fastapi_custom_responses.models.responses import PaginationMeta
+from tests.fixtures.models import ValidationPayload
+from tests.fixtures.responses import SAMPLE_PAYLOAD
 
 
-class TestSuccessEnvelopes:
-    """Tests for the shape of the success response envelopes."""
+class TestResponseEnvelopes:
+    """Tests for success response envelopes."""
 
     @pytest.mark.parametrize(
         ("path", "expected_body"),
         [
-            ("/response-with-data", {"success": True, "data": SAMPLE_PAYLOAD.model_dump()}),
-            ("/success-response", {"success": True}),
+            ("/response-with-data", Response(success=True, data=SAMPLE_PAYLOAD)),
+            ("/success-response", SuccessResponse(success=True)),
             (
                 "/paginated-response",
-                {
-                    "success": True,
-                    "data": [SAMPLE_PAYLOAD.model_dump()],
-                    "meta": {"offset": 0, "limit": 10, "total": 1},
-                },
+                PaginatedResponse(
+                    success=True, data=[SAMPLE_PAYLOAD], meta=PaginationMeta(offset=0, limit=10, total=1)
+                ),
             ),
         ],
         ids=["with_data", "payload_free", "paginated"],
     )
-    async def test_renders_the_success_envelope(
-        self, client: AsyncClient, path: str, expected_body: dict[str, Any]
+    async def test_renders(
+        self,
+        client: AsyncClient,
+        path: str,
+        expected_body: Response[ValidationPayload] | SuccessResponse | PaginatedResponse[ValidationPayload],
     ) -> None:
         """Test that each success envelope emits its documented body and nothing more."""
 
         response = await client.get(path)
 
         assert response.status_code == HTTPStatus.OK
-        assert response.json() == expected_body
+        assert response.json() == expected_body.model_dump(mode="json")
 
+    @pytest.mark.parametrize(
+        ("items", "offset"),
+        [([SAMPLE_PAYLOAD], 20), ([], 90)],
+        ids=["populated", "empty"],
+    )
+    def test_page_contents_and_bounds(self, items: list[ValidationPayload], offset: int) -> None:
+        """Test that populated and empty pages preserve their items and pagination bounds."""
 
-class TestBuildPage:
-    """Tests for building a paginated response from a page of items."""
-
-    def test_assembles_the_envelope_and_metadata(self) -> None:
-        """Test that a page of items and its bounds become a complete paginated response."""
-
-        page = PaginatedResponse.build_page([SAMPLE_PAYLOAD], offset=20, limit=10, total=57)
-
-        assert page.model_dump() == {
-            "success": True,
-            "data": [SAMPLE_PAYLOAD.model_dump()],
-            "meta": {"offset": 20, "limit": 10, "total": 57},
-        }
-
-    def test_accepts_an_empty_page(self) -> None:
-        """Test that a page past the end of the results carries no items and the real total."""
-
-        page = PaginatedResponse.build_page([], offset=90, limit=10, total=57)
+        page = PaginatedResponse.build_page(items, offset=offset, limit=10, total=57)
 
         assert page.model_dump() == {
             "success": True,
-            "data": [],
-            "meta": {"offset": 90, "limit": 10, "total": 57},
+            "data": [item.model_dump() for item in items],
+            "meta": {"offset": offset, "limit": 10, "total": 57},
         }
 
     def test_bounds_are_keyword_only(self) -> None:
