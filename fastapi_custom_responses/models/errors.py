@@ -1,10 +1,8 @@
+from collections.abc import Mapping
 from enum import StrEnum
-from functools import cached_property
-from types import UnionType
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, GetCoreSchemaHandler, GetPydanticSchema
-from pydantic_core.core_schema import CoreSchema, literal_schema
+from pydantic import BaseModel
 
 
 class DefaultErrorCode(StrEnum):
@@ -16,7 +14,7 @@ class DefaultErrorCode(StrEnum):
 
 
 class ErrorResponseModel[CodeT: str](BaseModel):
-    """Body every error response carries, and the schema documenting it in OpenAPI."""
+    """Error response envelope."""
 
     success: Literal[False]
     error: str
@@ -24,28 +22,23 @@ class ErrorResponseModel[CodeT: str](BaseModel):
 
 
 class ConstraintRule(BaseModel):
-    """Maps a Pydantic constraint error type to its `ctx` key, message template, and fallback."""
+    """Constraint message rule."""
 
     ctx_key: str
     template: str
     fallback: str
 
+    def format_error(self, field: str, ctx: Mapping[str, object]) -> str:
+        """Human-readable constraint violation."""
 
-class SelectedErrorCodes(BaseModel):
-    """The enum members one error response admits and documents."""
+        value = ctx.get(self.ctx_key)
 
-    model_config = ConfigDict(frozen=True)
+        if value is None:
+            return f"Field '{field}' {self.fallback}"
 
-    codes: tuple[StrEnum, ...] = Field(min_length=1)
+        if isinstance(value, float) and value.is_integer():
+            value = int(value)
 
-    @cached_property
-    def code_metadata(self) -> GetPydanticSchema:
-        """The native Pydantic metadata for the selected error-code values."""
+        unit = "item" if value == 1 else "items"
 
-        def _code_schema(_source_type: object, _handler: GetCoreSchemaHandler) -> CoreSchema:
-            return literal_schema([code.value for code in self.codes])
-
-        return GetPydanticSchema(_code_schema)
-
-
-type ResponseSpec = type[StrEnum] | type[BaseModel] | UnionType | SelectedErrorCodes | None
+        return f"Field '{field}' {self.template.format(value=value, unit=unit)}"

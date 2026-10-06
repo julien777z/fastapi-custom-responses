@@ -57,15 +57,15 @@ def main() -> None:
 
     changed = git("diff", "--name-only", "--no-renames", "-z", base, head).split("\0") if base else []
 
-    run = event_name == "workflow_dispatch" or any(is_application_source(path) for path in changed)
+    run = event_name in {"pull_request", "workflow_dispatch"} or any(
+        is_application_source(path) for path in changed
+    )
     revision = base if event_name == "pull_request" else ""
 
     with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
         output.write(f"run={str(run).lower()}\nbase={revision}\n")
 
-    print(
-        f"Lint scope: {event_name}; application source changed: {run}; revision: {revision or 'whole branch'}"
-    )
+    print(f"Lint scope: {event_name}; selected: {run}; revision: {revision or 'whole branch'}")
 
 
 if __name__ == "__main__":
