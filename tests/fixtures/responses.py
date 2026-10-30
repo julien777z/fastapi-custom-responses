@@ -13,6 +13,7 @@ from fastapi_custom_responses import (
     PaginatedResponse,
     Response,
     SuccessResponse,
+    error_responses,
 )
 from tests.fixtures.models import (
     AccessErrorCode,
@@ -238,5 +239,22 @@ def response_metadata_app() -> FastAPI:
             )
 
         return SuccessResponse(success=True)
+
+    return app
+
+
+@pytest.fixture
+def error_codes_app() -> FastAPI:
+    """App whose routes document status-carrying codes, a whole enum on one and a single member on the other."""
+
+    app = FastAPI(exception_handlers=EXCEPTION_HANDLERS, responses=EXCEPTION_RESPONSES)
+
+    async def documented(count: int) -> SuccessResponse:
+        """Answer with the success envelope once the query validates."""
+
+        return SuccessResponse(success=True)
+
+    app.add_api_route("/every-code", documented, responses=error_responses(AccessErrorCode))
+    app.add_api_route("/one-code", documented, responses=error_responses(AccessErrorCode.PERMISSION_DENIED))
 
     return app

@@ -1,16 +1,45 @@
 from collections.abc import Mapping
 from enum import StrEnum
-from typing import Literal
+from http import HTTPStatus
+from typing import Literal, Protocol, Self, runtime_checkable
 
 from pydantic import BaseModel
+
+
+@runtime_checkable
+class ErrorCode(Protocol):
+    """An error code member that declares the HTTP status it is answered with."""
+
+    @property
+    def value(self) -> str:
+        """The code's wire value."""
+
+        raise NotImplementedError
+
+    @property
+    def status_code(self) -> HTTPStatus:
+        """The HTTP status a response carrying this code has."""
+
+        raise NotImplementedError
 
 
 class DefaultErrorCode(StrEnum):
     """Codes for the conditions the library's own handlers detect."""
 
-    VALIDATION_ERROR = "validation_error"
-    INVALID_VALUE = "invalid_value"
-    INTERNAL_ERROR = "internal_error"
+    VALIDATION_ERROR = "validation_error", HTTPStatus.BAD_REQUEST
+    INVALID_VALUE = "invalid_value", HTTPStatus.BAD_REQUEST
+    INTERNAL_ERROR = "internal_error", HTTPStatus.INTERNAL_SERVER_ERROR
+
+    status_code: HTTPStatus
+
+    def __new__(cls, value: str, status_code: HTTPStatus) -> Self:
+        """Declare the wire value and HTTP status of one handler condition."""
+
+        member = str.__new__(cls, value)
+        member._value_ = value
+        member.status_code = status_code
+
+        return member
 
 
 class ErrorResponseModel[CodeT: str](BaseModel):

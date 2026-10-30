@@ -11,6 +11,7 @@ Provides normalized response objects and error handling for FastAPI applications
 - Generic `Response[T]`, `SuccessResponse`, and `PaginatedResponse[T]` envelopes for success payloads.
 - `ErrorResponseModel` as both the error body the handlers emit and the schema documenting it.
 - `ErrorResponse.from_status_code` for an error carrying a status's standard HTTP phrase.
+- `error_responses` documenting each error code under the HTTP status it declares.
 
 ## Quick Start
 
@@ -289,6 +290,53 @@ these fields together without a separate conversion helper.
 `response_model` validates and serializes the main response. Additional `responses` declarations
 only document alternatives; they do not validate a body returned by an exception handler or a
 `Response` object. The handler remains responsible for emitting the documented code.
+
+### Documenting Codes By Status
+
+Give each code the HTTP status it is answered with, and `error_responses` documents every code under
+its own status. Any `StrEnum` whose members expose a `status_code` works, so the module owning the
+codes needs no import from this package:
+
+```py
+from enum import StrEnum
+from http import HTTPStatus
+from typing import Self
+
+from fastapi_custom_responses import ErrorResponse, SuccessResponse, error_responses
+
+
+class OrderErrorCode(StrEnum):
+    ORDER_LOCKED = "order_locked", HTTPStatus.CONFLICT
+    ORDER_NOT_FOUND = "order_not_found", HTTPStatus.NOT_FOUND
+    QUANTITY_INVALID = "quantity_invalid", HTTPStatus.BAD_REQUEST
+
+    status_code: HTTPStatus
+
+    def __new__(cls, value: str, status_code: HTTPStatus) -> Self:
+        member = str.__new__(cls, value)
+        member._value_ = value
+        member.status_code = status_code
+
+        return member
+
+
+@router.put("/orders/{order_id}", responses=error_responses(OrderErrorCode))
+async def update_order(order_id: str) -> SuccessResponse:
+    code = OrderErrorCode.ORDER_LOCKED
+
+    raise ErrorResponse(error="This order is locked", status_code=code.status_code, code=code)
+
+
+@router.delete("/orders/{order_id}", responses=error_responses(OrderErrorCode.ORDER_NOT_FOUND))
+async def delete_order(order_id: str) -> SuccessResponse:
+    return SuccessResponse(success=True)
+```
+
+Pass an enum to document all of its members, or single members to document only those; combine
+several in one call. `DefaultErrorCode` declares its statuses too, so a status that carries one of
+your codes also lists the handlers' codes for it: `update_order` documents `quantity_invalid`,
+`validation_error` and `invalid_value` at `400`. Every call keeps `EXCEPTION_RESPONSES` and adds the
+plain error envelope at `401`.
 
 ### Handler Documentation
 

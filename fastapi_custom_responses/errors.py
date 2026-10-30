@@ -1,5 +1,5 @@
 import logging
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from enum import StrEnum
 from http import HTTPStatus
 from typing import Final, Literal, Self
@@ -7,13 +7,14 @@ from typing import Final, Literal, Self
 from fastapi import Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 from pydantic_core import ErrorDetails
 from starlette.exceptions import HTTPException
 
 from fastapi_custom_responses.models.errors import (
     ConstraintRule,
     DefaultErrorCode,
+    ErrorCode,
     ErrorResponseModel,
 )
 
@@ -68,7 +69,7 @@ CONSTRAINT_RULES: Final[dict[str, ConstraintRule]] = {
 }
 
 
-EXCEPTION_RESPONSES: Final[dict[int | str, dict[Literal["model"], type[BaseModel]]]] = {
+EXCEPTION_RESPONSES: Final[dict[int | str, dict[str, object]]] = {
     "4XX": {"model": ErrorResponseModel},
     "5XX": {"model": ErrorResponseModel},
     HTTPStatus.BAD_REQUEST: {
@@ -78,6 +79,37 @@ EXCEPTION_RESPONSES: Final[dict[int | str, dict[Literal["model"], type[BaseModel
     },
     HTTPStatus.INTERNAL_SERVER_ERROR: {"model": ErrorResponseModel[Literal[DefaultErrorCode.INTERNAL_ERROR]]},
 }
+
+
+def error_responses(*codes: ErrorCode | Iterable[ErrorCode]) -> dict[int | str, dict[str, object]]:
+    """Document each code under its HTTP status, beside the handlers' own responses.
+
+    Pass an enum to document every member, or single members to document only those.
+    """
+
+    codes_by_status: dict[HTTPStatus, dict[str, None]] = {}
+
+    for selection in codes:
+        members = (selection,) if isinstance(selection, ErrorCode) else selection
+
+        for member in members:
+            codes_by_status.setdefault(member.status_code, {})[member.value] = None
+
+    for member in DefaultErrorCode:
+        if member.status_code in codes_by_status:
+            codes_by_status[member.status_code][member.value] = None
+
+    envelope = ErrorResponseModel.model_json_schema()
+
+    responses = {**EXCEPTION_RESPONSES, HTTPStatus.UNAUTHORIZED: {"model": ErrorResponseModel}}
+
+    for status, values in codes_by_status.items():
+        code_schema = {"anyOf": [{"type": "string", "enum": list(values)}, {"type": "null"}]}
+        schema = {**envelope, "properties": {**envelope["properties"], "code": code_schema}}
+
+        responses[status] = {"content": {"application/json": {"schema": schema}}}
+
+    return responses
 
 
 class ErrorResponse(Exception):
