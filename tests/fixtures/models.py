@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from enum import StrEnum
 from http import HTTPStatus
+from typing import Self
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -10,8 +11,21 @@ from fastapi_custom_responses import ErrorResponseModel
 class AccessErrorCode(StrEnum):
     """Error codes for access failures, used to exercise consumer-defined codes."""
 
-    PERMISSION_DENIED = "permission_denied"
-    ACCOUNT_SUSPENDED = "account_suspended"
+    PERMISSION_DENIED = "permission_denied", HTTPStatus.FORBIDDEN
+    ACCOUNT_SUSPENDED = "account_suspended", HTTPStatus.FORBIDDEN
+    ACCOUNT_NOT_FOUND = "account_not_found", HTTPStatus.NOT_FOUND
+    ACCOUNT_NAME_INVALID = "account_name_invalid", HTTPStatus.BAD_REQUEST
+
+    status_code: HTTPStatus
+
+    def __new__(cls, value: str, status_code: HTTPStatus) -> Self:
+        """Declare the wire value and HTTP status of one access failure."""
+
+        member = str.__new__(cls, value)
+        member._value_ = value
+        member.status_code = status_code
+
+        return member
 
 
 class ValidationPayload(BaseModel):

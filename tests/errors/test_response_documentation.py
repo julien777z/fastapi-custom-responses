@@ -1,5 +1,6 @@
 from http import HTTPStatus
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -110,3 +111,58 @@ class TestResponseDocumentation:
             {"const": AccessErrorCode.ACCOUNT_SUSPENDED.value, "type": "string"},
             {"type": "null"},
         ]
+
+    @pytest.mark.parametrize(
+        ("path", "expected"),
+        [
+            (
+                "/every-code",
+                {
+                    HTTPStatus.BAD_REQUEST: [
+                        AccessErrorCode.ACCOUNT_NAME_INVALID,
+                        DefaultErrorCode.VALIDATION_ERROR,
+                        DefaultErrorCode.INVALID_VALUE,
+                    ],
+                    HTTPStatus.FORBIDDEN: [
+                        AccessErrorCode.PERMISSION_DENIED,
+                        AccessErrorCode.ACCOUNT_SUSPENDED,
+                    ],
+                    HTTPStatus.NOT_FOUND: [AccessErrorCode.ACCOUNT_NOT_FOUND],
+                },
+            ),
+            ("/one-code", {HTTPStatus.FORBIDDEN: [AccessErrorCode.PERMISSION_DENIED]}),
+        ],
+        ids=["whole_enum", "single_member"],
+    )
+    def test_error_responses_document_codes_at_their_status(
+        self, error_codes_app: FastAPI, path: str, expected: dict[HTTPStatus, list[str]]
+    ) -> None:
+        """Test that each code is documented under its own status beside the handlers' responses."""
+
+        spec = error_codes_app.openapi()
+        responses = spec["paths"][path]["get"]["responses"]
+
+        documented = {
+            HTTPStatus(int(status)): response["content"]["application/json"]["schema"]["properties"]["code"]
+            for status, response in responses.items()
+            if status.isdigit() and "properties" in response["content"]["application/json"]["schema"]
+        }
+
+        assert documented == {
+            status: {"anyOf": [{"type": "string", "enum": codes}, {"type": "null"}]}
+            for status, codes in expected.items()
+        }
+        assert {"4XX", "5XX", "400", "500"} <= responses.keys()
+        assert "422" not in responses
+
+    def test_error_responses_document_the_validation_code_returned(self, error_codes_app: FastAPI) -> None:
+        """Test that a request failing validation answers with a code its route documents at 400."""
+
+        response = TestClient(error_codes_app).get("/every-code")
+
+        schema = error_codes_app.openapi()["paths"]["/every-code"]["get"]["responses"]["400"]["content"][
+            "application/json"
+        ]["schema"]
+
+        assert response.status_code == HTTPStatus.BAD_REQUEST
+        assert response.json()["code"] in schema["properties"]["code"]["anyOf"][0]["enum"]
