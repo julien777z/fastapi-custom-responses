@@ -101,7 +101,7 @@ def error_responses(*codes: ErrorCode | Iterable[ErrorCode]) -> dict[int | str, 
 
     envelope = ErrorResponseModel.model_json_schema()
 
-    responses = {**EXCEPTION_RESPONSES, HTTPStatus.UNAUTHORIZED: {"model": ErrorResponseModel}}
+    responses = dict(EXCEPTION_RESPONSES)
 
     for status, values in codes_by_status.items():
         code_schema = {"anyOf": [{"type": "string", "enum": list(values)}, {"type": "null"}]}

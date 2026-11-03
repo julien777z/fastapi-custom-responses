@@ -152,7 +152,7 @@ class TestResponseDocumentation:
             status: {"anyOf": [{"type": "string", "enum": codes}, {"type": "null"}]}
             for status, codes in expected.items()
         }
-        assert {"4XX", "5XX", "400", "401", "500"} <= responses.keys()
+        assert {"4XX", "5XX", "400", "500"} <= responses.keys()
         assert "422" not in responses
 
     def test_error_responses_document_the_validation_code_returned(self, error_codes_app: FastAPI) -> None:

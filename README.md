@@ -335,8 +335,7 @@ async def delete_order(order_id: str) -> SuccessResponse:
 Pass an enum to document all of its members, or single members to document only those; combine
 several in one call. `DefaultErrorCode` declares its statuses too, so a status that carries one of
 your codes also lists the handlers' codes for it: `update_order` documents `quantity_invalid`,
-`validation_error` and `invalid_value` at `400`. Every call keeps `EXCEPTION_RESPONSES` and adds the
-plain error envelope at `401`.
+`validation_error` and `invalid_value` at `400`. Every call keeps `EXCEPTION_RESPONSES`.
 
 ### Handler Documentation
 
