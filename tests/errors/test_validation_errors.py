@@ -1,7 +1,7 @@
 from http import HTTPStatus
 
 import pytest
-from httpx import AsyncClient
+from httpx2 import AsyncClient
 from pydantic import JsonValue
 
 from fastapi_custom_responses import DefaultErrorCode

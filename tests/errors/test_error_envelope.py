@@ -2,7 +2,7 @@ from http import HTTPStatus
 from inspect import Parameter, signature
 
 import pytest
-from httpx import AsyncClient
+from httpx2 import AsyncClient
 
 from fastapi_custom_responses import (
     DefaultErrorCode,
