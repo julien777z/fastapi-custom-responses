@@ -356,10 +356,10 @@ its own codes at `400` or `500`, document the union of its codes and the handler
 
 ## Local Development
 
-Install the project with its development dependencies:
+Install the project with its development and test dependencies:
 
 ```bash
-poetry install -E dev
+poetry install -E dev --with test
 ```
 
 Run the test suite:
