@@ -3,7 +3,7 @@ from typing import Final
 
 import pytest
 from fastapi import FastAPI
-from httpx import ASGITransport, AsyncClient
+from httpx2 import ASGITransport, AsyncClient
 
 pytest_plugins: Final[tuple[str, ...]] = ("tests.fixtures.responses",)
 

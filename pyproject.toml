@@ -22,7 +22,7 @@ dev = [
     "pylint>=4.0.6,<5.0.0",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
-    "httpx>=0.28.1",
+    "httpx2>=2.16.2",
 ]
 
 [project.urls]
@@ -43,6 +43,7 @@ disable = ["missing-module-docstring"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 
 [tool.poetry.dependencies]
 pydantic-super-model = { git = "https://github.com/julien777z/pydantic-super-model.git", branch = "codex/python-3-15" }
