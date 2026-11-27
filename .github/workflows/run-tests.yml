@@ -34,7 +34,7 @@ jobs:
         uses: ./.github/actions/setup-poetry
 
       - name: Install dependencies
-        run: poetry install --with test
+        run: poetry install
 
       - name: Run Tests
         run: poetry run pytest tests/ -v

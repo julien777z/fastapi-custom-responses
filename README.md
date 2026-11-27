@@ -359,7 +359,7 @@ its own codes at `400` or `500`, document the union of its codes and the handler
 Install the project with its development and test dependencies:
 
 ```bash
-poetry install -E dev --with test
+poetry install -E dev
 ```
 
 Run the test suite:
