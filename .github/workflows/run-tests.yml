@@ -15,7 +15,7 @@ on:
 
 jobs:
   test:
-    name: Run Tests
+    name: Build and Run Tests
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
