@@ -1,5 +1,5 @@
 name: Setup Poetry
-description: Install the repository's Poetry version and put it on PATH.
+description: Install the latest stable Poetry and put it on PATH.
 
 runs:
   using: composite
@@ -7,5 +7,8 @@ runs:
     - name: Install Poetry
       shell: bash
       run: |
-        pipx install poetry==2.1.4
-        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        python -m venv "$RUNNER_TEMP/poetry"
+        "$RUNNER_TEMP/poetry/bin/python" -m pip install --disable-pip-version-check poetry
+        mkdir -p "$RUNNER_TEMP/poetry-bin"
+        ln -sf "$RUNNER_TEMP/poetry/bin/poetry" "$RUNNER_TEMP/poetry-bin/poetry"
+        echo "$RUNNER_TEMP/poetry-bin" >> "$GITHUB_PATH"
