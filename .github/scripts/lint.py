@@ -7,7 +7,7 @@ ROOT: Final[Path] = Path(__file__).resolve().parents[2]
 
 
 def main() -> int:
-    """Run each native lint tool once, scoped to existing changed files on pull requests."""
+    """Run each native lint tool, scoped to changed files on pull requests, then type check the project."""
 
     base = os.environ.get("LINT_BASE_REVISION", "")
     changed = []
@@ -44,7 +44,9 @@ def main() -> int:
         status = subprocess.call(["poetry", "run", tool, *flags, *targets], cwd=ROOT)
         result = result or status
 
-    return result
+    status = subprocess.call(["poetry", "run", "pyright"], cwd=ROOT)
+
+    return result or status
 
 
 if __name__ == "__main__":

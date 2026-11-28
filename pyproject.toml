@@ -20,6 +20,7 @@ dev = [
     "black>=26.5.1,<27.0.0",
     "isort>=8.0.1,<10.0.0",
     "pylint>=4.0.6,<5.0.0",
+    "pyright>=1.1.414",
 ]
 
 [dependency-groups]
@@ -31,6 +32,10 @@ test = [
 
 [project.urls]
 Homepage = "https://github.com/julien777z/fastapi-custom-responses"
+
+[tool.pyright]
+include = ["fastapi_custom_responses", "tests", ".github/scripts"]
+typeCheckingMode = "strict"
 
 [tool.black]
 line-length = 110

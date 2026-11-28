@@ -42,7 +42,7 @@ jobs:
 
       - name: Install dependencies
         if: steps.scope.outputs.run == 'true'
-        run: poetry install -E dev --without test
+        run: poetry install -E dev
 
       - name: Lint
         if: steps.scope.outputs.run == 'true'

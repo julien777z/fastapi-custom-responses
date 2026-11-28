@@ -368,10 +368,11 @@ Run the test suite:
 poetry run pytest tests/ -v
 ```
 
-Format and lint:
+Format, lint and type check:
 
 ```bash
 poetry run black .
 poetry run isort .
 poetry run pylint fastapi_custom_responses/ .github/scripts/
+poetry run pyright
 ```
