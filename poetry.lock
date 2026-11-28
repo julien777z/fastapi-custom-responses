@@ -625,13 +625,13 @@ python-generics = ">=0.2.5"
 typing-inspection = ">=0.4.2"
 
 [package.extras]
-dev = ["black (>=26.5.1)", "coverage (>=7.16.0)", "isort (>=9.0.1)", "pylint (>=4.0.8)", "pytest (>=9.1.1)", "pytest-asyncio (>=1.4.0)", "pytest-cov (>=7.1.0)", "typing-extensions (>=4.14.1)"]
+dev = ["black (>=26.10.1)", "isort (>=9.0.2)", "pylint (>=4.1.4)", "pyright (>=1.1.414)"]
 
 [package.source]
 type = "git"
 url = "https://github.com/julien777z/pydantic-super-model.git"
-reference = "codex/python-3-15"
-resolved_reference = "4eba194752d999ce6cb182c06587f73000c86c92"
+reference = "main"
+resolved_reference = "d5a983d5fd5c5b40e06bd30de84293c0aab2a4ee"
 
 [[package]]
 name = "pygments"
@@ -863,4 +863,4 @@ dev = ["black", "isort", "pylint"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.16"
-content-hash = "fb224e2f6e53b247b55146e4053dfa7380b1d5857567310d3855a083be4ecd11"
+content-hash = "93810ea45aa284046faac2f5e22e268c09f200060c0fa628f5cf93dbc2a663c1"
