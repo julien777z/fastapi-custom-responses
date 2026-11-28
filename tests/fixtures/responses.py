@@ -107,6 +107,7 @@ RAISED_ERROR_CASES: Final[dict[str, RaisedErrorCase]] = {
 METADATA_BODY: Final[ErrorResponseModel[AccessErrorCode]] = ErrorResponseModel[AccessErrorCode](
     success=False, error="Access denied", code=AccessErrorCode.PERMISSION_DENIED
 )
+
 METADATA: Final[ResponseMetadata] = ResponseMetadata(
     description="Access to this resource was refused",
     explicit_refusal="Explicit application refusal",
