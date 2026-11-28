@@ -49,7 +49,7 @@ class TestResponseEnvelopes:
     def test_page_contents_and_bounds(self, items: list[ValidationPayload], offset: int) -> None:
         """Test that populated and empty pages preserve their items and pagination bounds."""
 
-        page = PaginatedResponse.build_page(items, offset=offset, limit=10, total=57)
+        page = PaginatedResponse[ValidationPayload].build_page(items, offset=offset, limit=10, total=57)
 
         assert page.model_dump() == {
             "success": True,
@@ -60,7 +60,7 @@ class TestResponseEnvelopes:
     def test_bounds_are_keyword_only(self) -> None:
         """Test that the page bounds can only be supplied by keyword and cannot be transposed."""
 
-        bounds = signature(PaginatedResponse.build_page).parameters
+        bounds = signature(PaginatedResponse[ValidationPayload].build_page).parameters
 
         assert all(bounds[name].kind is Parameter.KEYWORD_ONLY for name in ("offset", "limit", "total"))
 
@@ -75,4 +75,6 @@ class TestResponseEnvelopes:
         """Test that a parametrized paginated response rejects an item of the wrong shape."""
 
         with pytest.raises(ValidationError):
-            PaginatedResponse[ValidationPayload].build_page([{"unrelated": 1}], offset=0, limit=10, total=1)
+            PaginatedResponse[ValidationPayload].model_validate(
+                {"success": True, "data": [{"unrelated": 1}], "meta": {"offset": 0, "limit": 10, "total": 1}}
+            )

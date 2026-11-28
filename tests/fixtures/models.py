@@ -5,7 +5,7 @@ from typing import Self
 
 from pydantic import BaseModel, Field, field_validator
 
-from fastapi_custom_responses import ErrorResponseModel
+from fastapi_custom_responses import DefaultErrorCode, ErrorResponseModel
 
 
 class AccessErrorCode(StrEnum):
@@ -75,7 +75,7 @@ class RaisedErrorCase(BaseModel):
 
     build_exception: Callable[[], Exception]
     status_code: HTTPStatus
-    expected_body: ErrorResponseModel
+    expected_body: ErrorResponseModel[AccessErrorCode | DefaultErrorCode]
 
 
 class ResponseMetadata(BaseModel):

@@ -16,7 +16,7 @@ class TestErrorResponseModel:
     def test_code_is_optional(self) -> None:
         """Test that ErrorResponseModel leaves the code unset when none is given."""
 
-        assert ErrorResponseModel(success=False, error=METADATA_BODY.error).code is None
+        assert ErrorResponseModel[AccessErrorCode](success=False, error=METADATA_BODY.error).code is None
 
     def test_json_schema_exposes_code_as_optional(self) -> None:
         """Test that the generated JSON schema lists code as an optional property."""
@@ -39,7 +39,9 @@ class TestErrorResponseModel:
         """Test that a parametrized model rejects a code outside its enum."""
 
         with pytest.raises(ValidationError):
-            ErrorResponseModel[AccessErrorCode](success=False, error=METADATA_BODY.error, code="bogus")
+            ErrorResponseModel[AccessErrorCode].model_validate(
+                {"success": False, "error": METADATA_BODY.error, "code": "bogus"}
+            )
 
     def test_enum_schema(self) -> None:
         """Test that parametrizing the model enumerates the code enum in its schema."""
@@ -58,7 +60,7 @@ class TestErrorResponseModel:
             assert model(success=False, error=METADATA_BODY.error, code=code).code == code
         else:
             with pytest.raises(ValidationError):
-                model(success=False, error=METADATA_BODY.error, code=code)
+                model.model_validate({"success": False, "error": METADATA_BODY.error, "code": code})
 
         assert model(success=False, error=METADATA_BODY.error).code is None
         assert model(success=False, error=METADATA_BODY.error, code=None).code is None
