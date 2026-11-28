@@ -1,9 +1,18 @@
 name: Run Tests
 
 on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths-ignore:
+      - "README.md"
+      - "LICENSE"
+      - "AGENTS.md"
+      - ".agents/**"
+      - ".claude/**"
+      - ".codex/**"
+      - ".cursor/**"
   push:
-    branches:
-      - "**"
+    branches: [main]
     paths-ignore:
       - "README.md"
       - "LICENSE"
@@ -16,6 +25,7 @@ on:
 jobs:
   test:
     name: Build and Run Tests
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
