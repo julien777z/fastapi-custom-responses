@@ -628,13 +628,15 @@ typing-extensions = ">=4.16.0"
 
 [[package]]
 name = "pydantic-super-model"
-version = "2.1.0"
+version = "2.2.0"
 description = "Lightweight mixin for generic introspection and Annotated field lookup"
 optional = false
-python-versions = ">=3.11,<3.16"
+python-versions = "<3.16,>=3.11"
 groups = ["main"]
-files = []
-develop = false
+files = [
+    {file = "pydantic_super_model-2.2.0-py3-none-any.whl", hash = "sha256:fccff465bc1f377e39306dc5ce61b2adcffc40a8a97a0afead829c2446b1eaeb"},
+    {file = "pydantic_super_model-2.2.0.tar.gz", hash = "sha256:ef04ec7401438e45da54f200d80bb7779b6efbec7330afbbf0691587a554a3f0"},
+]
 
 [package.dependencies]
 pydantic = ">=2.13.5"
@@ -643,12 +645,6 @@ typing-inspection = ">=0.4.2"
 
 [package.extras]
 dev = ["black (>=26.10.1)", "isort (>=9.0.2)", "pylint (>=4.1.4)", "pyright (>=1.1.414)"]
-
-[package.source]
-type = "git"
-url = "https://github.com/julien777z/pydantic-super-model.git"
-reference = "main"
-resolved_reference = "d5a983d5fd5c5b40e06bd30de84293c0aab2a4ee"
 
 [[package]]
 name = "pygments"
@@ -902,4 +898,4 @@ dev = ["black", "isort", "pylint", "pyright"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<3.16"
-content-hash = "439f729ecbbdb7dd341b0920327ad7f9fbf5966d6b1bc7fb7a60b0ffcb07b9df"
+content-hash = "7c0c7541372e8d12958eed92e2c1396fe179874dbba0a97ee8182ec2e26eef0c"

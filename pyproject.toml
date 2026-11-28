@@ -12,7 +12,7 @@ requires-python = ">=3.12,<3.16"
 dependencies = [
     "pydantic>=2.13.4",
     "fastapi>=0.139.0",
-    "pydantic-super-model>=2.0.0",
+    "pydantic-super-model>=2.2.0",
 ]
 
 [project.optional-dependencies]
@@ -54,9 +54,6 @@ disable = ["missing-module-docstring"]
 filterwarnings = ["error"]
 asyncio_default_fixture_loop_scope = "function"
 asyncio_mode = "auto"
-
-[tool.poetry.dependencies]
-pydantic-super-model = { git = "https://github.com/julien777z/pydantic-super-model.git", branch = "main" }
 
 [build-system]
 requires = ["poetry-core>=2.1.0"]
