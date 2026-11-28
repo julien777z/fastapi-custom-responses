@@ -1,12 +1,12 @@
 import logging
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Coroutine, Iterable, Mapping
 from enum import StrEnum
 from http import HTTPStatus
 from typing import Final, Literal, Self
 
 from fastapi import Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import ValidationError
 from pydantic_core import ErrorDetails
 from starlette.exceptions import HTTPException
@@ -201,7 +201,7 @@ def error_json_response(
     return JSONResponse(status_code=status_code, content=content, headers=headers)
 
 
-def exception_handler(_: Request, exc: Exception) -> JSONResponse:
+async def exception_handler(_: Request, exc: Exception) -> JSONResponse:
     """FastAPI exception callback."""
 
     status_code: int = HTTPStatus.INTERNAL_SERVER_ERROR
@@ -239,7 +239,9 @@ def exception_handler(_: Request, exc: Exception) -> JSONResponse:
     return error_json_response(status_code, error, code, headers=headers)
 
 
-EXCEPTION_HANDLERS: Final[dict[type[Exception], Callable[[Request, Exception], JSONResponse]]] = {
+EXCEPTION_HANDLERS: Final[
+    dict[int | type[Exception], Callable[[Request, Exception], Coroutine[object, object, Response]]]
+] = {
     exception_type: exception_handler
     for exception_type in (
         HTTPException,

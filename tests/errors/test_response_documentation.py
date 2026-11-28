@@ -4,7 +4,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from fastapi_custom_responses import DefaultErrorCode, ErrorResponseModel
+from fastapi_custom_responses import DefaultErrorCode
 from tests.fixtures.models import AccessErrorCode
 from tests.fixtures.responses import METADATA, METADATA_BODY
 

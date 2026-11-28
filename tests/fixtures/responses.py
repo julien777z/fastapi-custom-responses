@@ -104,9 +104,10 @@ RAISED_ERROR_CASES: Final[dict[str, RaisedErrorCase]] = {
 }
 
 
-METADATA_BODY: Final[ErrorResponseModel] = ErrorResponseModel(
+METADATA_BODY: Final[ErrorResponseModel[AccessErrorCode]] = ErrorResponseModel[AccessErrorCode](
     success=False, error="Access denied", code=AccessErrorCode.PERMISSION_DENIED
 )
+
 METADATA: Final[ResponseMetadata] = ResponseMetadata(
     description="Access to this resource was refused",
     explicit_refusal="Explicit application refusal",
@@ -124,16 +125,16 @@ def app() -> FastAPI:
     app = FastAPI(exception_handlers=EXCEPTION_HANDLERS, responses=EXCEPTION_RESPONSES)
 
     @app.post("/validate")
-    async def validate_endpoint(payload: ValidationPayload) -> dict:
-        return {"success": True, "data": payload.model_dump()}
+    async def validate_endpoint(payload: ValidationPayload) -> Response[ValidationPayload]:
+        return Response(success=True, data=payload)
 
     @app.post("/validate-constrained")
-    async def validate_constrained_endpoint(payload: ConstrainedPayload) -> dict:
-        return {"success": True, "data": payload.model_dump()}
+    async def validate_constrained_endpoint(payload: ConstrainedPayload) -> Response[ConstrainedPayload]:
+        return Response(success=True, data=payload)
 
     @app.post("/validate-value-error")
-    async def validate_value_error_endpoint(payload: ValueErrorPayload) -> dict:
-        return {"success": True, "data": payload.model_dump()}
+    async def validate_value_error_endpoint(payload: ValueErrorPayload) -> Response[ValueErrorPayload]:
+        return Response(success=True, data=payload)
 
     @app.get("/response-with-data")
     async def response_with_data_endpoint() -> Response[ValidationPayload]:
@@ -145,7 +146,7 @@ def app() -> FastAPI:
 
     @app.get("/paginated-response")
     async def paginated_response_endpoint() -> PaginatedResponse[ValidationPayload]:
-        return PaginatedResponse.build_page([SAMPLE_PAYLOAD], offset=0, limit=10, total=1)
+        return PaginatedResponse[ValidationPayload].build_page([SAMPLE_PAYLOAD], offset=0, limit=10, total=1)
 
     @app.get("/invalid-model")
     async def invalid_model_endpoint() -> SuccessResponse:

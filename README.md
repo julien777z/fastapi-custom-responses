@@ -356,7 +356,7 @@ its own codes at `400` or `500`, document the union of its codes and the handler
 
 ## Local Development
 
-Install the project with its development dependencies:
+Install the project with its development and test dependencies:
 
 ```bash
 poetry install -E dev
@@ -368,10 +368,11 @@ Run the test suite:
 poetry run pytest tests/ -v
 ```
 
-Format and lint:
+Format, lint and type check:
 
 ```bash
 poetry run black .
 poetry run isort .
 poetry run pylint fastapi_custom_responses/ .github/scripts/
+poetry run pyright
 ```

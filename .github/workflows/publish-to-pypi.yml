@@ -5,7 +5,7 @@ on:
     inputs:
       version_increment:
         description: Version increment type
-        required: true
+        required: false
         type: choice
         default: patch
         options:
@@ -30,10 +30,10 @@ jobs:
       url: https://pypi.org/project/fastapi-custom-responses/
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version-file: ".python-version"
 
@@ -54,7 +54,7 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: "${{ steps.bump.outputs.new }}"
           name: "Release v${{ steps.bump.outputs.new }}"
